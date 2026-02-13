@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Tree Explorer - Marketing Analytics</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=DM+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Use modern Babel for optional chaining/nullish coalescing support -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- PapaParse -->
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0F1117;
+            font-family: 'DM Sans', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Scrollbar styles similar to the design */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0F1117;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2A2E3D;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3A3F52;
+        }
+
+        #error-display {
+            padding: 20px;
+            color: #ff6b6b;
+            background: #2d1b1b;
+            display: none;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+    <script>
+        window.addEventListener('error', function (e) {
+            const el = document.getElementById('error-display');
+            if (el) {
+                el.style.display = 'block';
+                el.textContent += 'Error: ' + e.message + '\n';
+            }
+        });
+    </script>
+</head>
+
+<body>
+    <div id="error-display"></div>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Destructure React hooks
+        const { useState, useCallback, useMemo, useRef, useEffect } = React;
+        const Papa = window.Papa;
+
+        const DEPTH_COLORS = ["#6C5CE7", "#00B894", "#FDCB6E", "#E17055", "#74B9FF", "#A29BFE", "#FD79A8", "#55E6C1", "#F8A5C2", "#778CA3"];
+
+        function fmt(val, metric, metricsMeta) {
+            const n = Number(val);
+            const m = metricsMeta && metricsMeta[metric];
+            const prefix = m && m.isCurrency ? "$" : "";
+            if (n >= 1e6) return prefix + (n / 1e6).toFixed(1) + "M";
+            if (n >= 1e3) return prefix + (n / 1e3).toFixed(1) + "K";
+            return prefix + n.toLocaleString();
+        }
+
+        function fmtFull(val, metric, metricsMeta) {
+            const n = Number(val);
+            const m = metricsMeta && metricsMeta[metric];
+            const prefix = m && m.isCurrency ? "$" : "";
+            return prefix + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function buildTree(data, branches, metric) {
+            const agg = (rows) => rows.reduce((s, r) => s + (Number(r[metric]) || 0), 0);
+            function recurse(rows, depth) {
+                if (depth >= branches.length) return null;
+                const field = branches[depth];
+                const groups = {};
+                rows.forEach(r => {
+                    const key = String(r[field] ?? "N/A");
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(r);
+                });
+                return Object.entries(groups)
+                    .map(([key, gr]) => ({ label: key, field, value: agg(gr), children: recurse(gr, depth + 1) }))
+                    .sort((a, b) => b.value - a.value);
+            }
+            return { label: "All", field: "root", value: agg(data), children: recurse(data, 0) };
+        }
+
+        /* ─── Tree rendering ─── */
+
+        const CARD_W = 220;
+        const H_GAP = 52;
+        const V_GAP = 14;
+        const LINE_CLR = "#3A3F52";
+
+        function TreeNode({ node, metric, metricsMeta, labels, depth = 0, parentValue, expanded, toggleExpand, defaultOpen }) {
+            const hasChildren = node.children && node.children.length > 0;
+            const nodeId = `${depth}-${node.label}`;
+            const isOpen = expanded[nodeId] !== undefined ? expanded[nodeId] : defaultOpen;
+            const pct = parentValue ? ((node.value / parentValue) * 100).toFixed(1) : null;
+            const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
+            const barWidth = parentValue ? Math.max(4, (node.value / parentValue) * 100) : 100;
+            const displayLabel = node.label === "true" ? "Yes" : node.label === "false" ? "No" : node.label;
+
+            const cardRef = useRef(null);
+            const childAreaRef = useRef(null);
+            const childRefs = useRef([]);
+            const [lineData, setLineData] = useState(null);
+
+            useEffect(() => {
+                if (!isOpen || !hasChildren) { setLineData(null); return; }
+                const area = childAreaRef.current;
+                const card = cardRef.current;
+                if (!area || !card) { setLineData(null); return; }
+                const measure = () => {
+                    const aRect = area.getBoundingClientRect();
+                    const pRect = card.getBoundingClientRect();
+                    const parentCY = pRect.top + pRect.height / 2 - aRect.top;
+                    const cys = [];
+                    childRefs.current.forEach(el => {
+                        if (!el) return;
+                        const c = el.querySelector("[data-tree-card]");
+                        if (!c) return;
+                        const r = c.getBoundingClientRect();
+                        cys.push(r.top + r.height / 2 - aRect.top);
+                    });
+                    if (cys.length > 0) setLineData({ parentCY, cys });
+                };
+                const frame = requestAnimationFrame(measure);
+                const obs = new ResizeObserver(measure);
+                obs.observe(area);
+                return () => { cancelAnimationFrame(frame); obs.disconnect(); };
+            }, [isOpen, hasChildren]);
+
+            return (
+                <div style={{ display: "flex", alignItems: "flex-start" }}>
+                    <div
+                        ref={cardRef} data-tree-card
+                        onClick={() => hasChildren && toggleExpand(nodeId)}
+                        style={{
+                            display: "flex", flexDirection: "column", gap: 5,
+                            padding: "10px 16px", width: CARD_W, flexShrink: 0, boxSizing: "border-box",
+                            background: depth === 0 ? "#1E2030" : "#16181F",
+                            border: `1px solid ${depth === 0 ? color + "44" : "#2A2E3D"}`,
+                            borderRadius: 10, cursor: hasChildren ? "pointer" : "default",
+                            transition: "all 0.15s ease", position: "relative", zIndex: 1,
+                        }}
+                        onMouseEnter={e => { if (hasChildren) { e.currentTarget.style.background = "#222633"; e.currentTarget.style.borderColor = color + "66"; } }}
+                        onMouseLeave={e => { e.currentTarget.style.background = depth === 0 ? "#1E2030" : "#16181F"; e.currentTarget.style.borderColor = depth === 0 ? color + "44" : "#2A2E3D"; }}
+                    >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {depth > 0 && (
+                                <span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color, opacity: 0.8 }}>
+                                    {labels[node.field] || node.field}
+                                </span>
+                            )}
+                            <div style={{ flex: 1 }} />
+                            {hasChildren && (
+                                <span style={{
+                                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                    width: 18, height: 18, borderRadius: 4, fontSize: 10, fontWeight: 700,
+                                    background: color + "22", color, flexShrink: 0,
+                                    transition: "transform 0.2s ease", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                                }}>▶</span>
+                            )}
+                        </div>
+                        <span style={{
+                            fontSize: depth === 0 ? 16 : 14, fontWeight: depth === 0 ? 700 : 600,
+                            color: "#E8E6F0", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left", lineHeight: 1.3,
+                        }}>{displayLabel}</span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 1 }}>
+                            <span style={{ fontSize: depth === 0 ? 17 : 15, fontWeight: 700, color: "#E8E6F0", fontVariantNumeric: "tabular-nums" }}>
+                                {fmt(node.value, metric, metricsMeta)}
+                            </span>
+                            {pct && <span style={{ fontSize: 13, fontWeight: 600, color: "#8B8AA0", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>}
+                        </div>
+                        <div style={{ height: 3, borderRadius: 2, background: color + "33", width: "100%", overflow: "hidden", marginTop: 2 }}>
+                            <div style={{ height: "100%", borderRadius: 2, background: color, width: barWidth + "%", transition: "width 0.3s ease" }} />
+                        </div>
+                    </div>
+
+                    {hasChildren && isOpen && (
+                        <div ref={childAreaRef} style={{ position: "relative", marginLeft: H_GAP, display: "flex", flexDirection: "column", gap: V_GAP }}>
+                            {lineData && (
+                                <svg style={{ position: "absolute", left: -H_GAP, top: 0, width: H_GAP, height: "100%", overflow: "visible", pointerEvents: "none", zIndex: 0 }}>
+                                    <line x1={0} y1={lineData.parentCY} x2={H_GAP / 2} y2={lineData.parentCY} stroke={LINE_CLR} strokeWidth={1} />
+                                    <line x1={H_GAP / 2} y1={Math.min(lineData.parentCY, lineData.cys[0])} x2={H_GAP / 2} y2={Math.max(lineData.parentCY, lineData.cys[lineData.cys.length - 1])} stroke={LINE_CLR} strokeWidth={1} />
+                                    {lineData.cys.map((cy, i) => <line key={i} x1={H_GAP / 2} y1={cy} x2={H_GAP} y2={cy} stroke={LINE_CLR} strokeWidth={1} />)}
+                                </svg>
+                            )}
+                            {node.children.map((child, i) => (
+                                <div key={child.label} ref={el => childRefs.current[i] = el}>
+                                    <TreeNode node={child} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={depth + 1} parentValue={node.value} expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function DraggablePill({ label, field, onRemove, index, onDragStart, onDragOver, onDrop, color }) {
+            return (
+                <div
+                    draggable
+                    onDragStart={e => onDragStart(e, index)}
+                    onDragOver={e => { e.preventDefault(); onDragOver(e, index); }}
+                    onDrop={e => onDrop(e, index)}
+                    style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "6px 12px", borderRadius: 6,
+                        background: color + "18", border: `1px solid ${color}44`,
+                        cursor: "grab", fontSize: 12, fontWeight: 600, color,
+                        userSelect: "none", transition: "all 0.15s ease",
+                    }}
+                >
+                    <span style={{ opacity: 0.5, fontSize: 10 }}>⠿</span>
+                    {label}
+                    <span
+                        onClick={e => { e.stopPropagation(); onRemove(field); }}
+                        style={{ marginLeft: 2, cursor: "pointer", opacity: 0.5, fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+                        onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                        onMouseLeave={e => e.currentTarget.style.opacity = "0.5"}
+                    >×</span>
+                </div>
+            );
+        }
+
+        /* ─── Helpers ─── */
+
+        function isNumericColumn(rows, field) {
+            let numCount = 0;
+            let total = 0;
+            for (const r of rows) {
+                const v = r[field];
+                if (v === null || v === undefined || v === "") continue;
+                total++;
+                if (!isNaN(Number(v))) numCount++;
+            }
+            return total > 0 && numCount / total > 0.8;
+        }
+
+        function prettifyLabel(field) {
+            return field
+                .replace(/_/g, " ")
+                .replace(/([a-z])([A-Z])/g, "$1 $2")
+                .replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        /* ─── Upload Screen ─── */
+
+        function UploadScreen({ onDataReady }) {
+            const [dragging, setDragging] = useState(false);
+            const fileRef = useRef(null);
+
+            const processFile = (file) => {
+                if (!file) return;
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (result) => {
+                        if (result.data && result.data.length > 0) {
+                            onDataReady(result.data, result.meta.fields || Object.keys(result.data[0]));
+                        }
+                    },
+                });
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file && (file.name.endsWith(".csv") || file.type === "text/csv")) processFile(file);
+            };
+
+            return (
+                <div style={{
+                    minHeight: "100vh", background: "#0F1117", color: "#E8E6F0",
+                    fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 40,
+                }}>
+                    <div style={{
+                        width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, #6C5CE7, #A29BFE)",
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginBottom: 24,
+                    }}>🌿</div>
+                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 8px", letterSpacing: "-0.03em" }}>Sales Tree Explorer</h1>
+                    <p style={{ color: "#8B8AA0", fontSize: 14, margin: "0 0 40px", textAlign: "center", maxWidth: 400, lineHeight: 1.5 }}>
+                        Upload any CSV file to explore your data as an interactive hierarchical tree. Choose your own branches and metrics.
+                    </p>
+
+                    <div
+                        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                        onDragLeave={() => setDragging(false)}
+                        onDrop={handleDrop}
+                        onClick={() => fileRef.current?.click()}
+                        style={{
+                            width: "100%", maxWidth: 480, padding: "60px 40px",
+                            border: `2px dashed ${dragging ? "#6C5CE7" : "#2A2E3D"}`,
+                            borderRadius: 16, textAlign: "center", cursor: "pointer",
+                            background: dragging ? "#6C5CE708" : "#16181F",
+                            transition: "all 0.2s ease",
+                        }}
+                    >
+                        <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.6 }}>📄</div>
+                        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+                            {dragging ? "Drop your CSV here" : "Click to upload or drag & drop"}
+                        </div>
+                        <div style={{ fontSize: 13, color: "#5A596E" }}>Supports .csv files</div>
+                        <input
+                            ref={fileRef} type="file" accept=".csv"
+                            style={{ display: "none" }}
+                            onChange={e => { processFile(e.target.files[0]); e.target.value = ""; }}
+                        />
+                    </div>
+
+                    <div style={{ marginTop: 36, color: "#3A3F52", fontSize: 12, textAlign: "center", lineHeight: 1.5 }}>
+                        Your data stays in your browser — nothing leaves your machine<br />
+                        <a href="../../index.html" style={{ color: "#6C5CE7", textDecoration: "none", marginTop: "10px", display: "inline-block" }}>← Back to Marketing Analytics</a>
+                    </div>
+                </div>
+            );
+        }
+
+        /* ─── Field Configuration Screen ─── */
+
+        function ConfigScreen({ fields, rows, onConfirm, onBack }) {
+            const [fieldConfig, setFieldConfig] = useState(() => {
+                const cfg = {};
+                fields.forEach(f => {
+                    const numeric = isNumericColumn(rows, f);
+                    cfg[f] = { role: numeric ? "metric" : "dimension", isCurrency: false };
+                });
+                return cfg;
+            });
+
+            const toggleRole = (f) => {
+                setFieldConfig(prev => ({
+                    ...prev,
+                    [f]: { ...prev[f], role: prev[f].role === "dimension" ? "metric" : "dimension" },
+                }));
+            };
+
+            const toggleCurrency = (f) => {
+                setFieldConfig(prev => ({
+                    ...prev,
+                    [f]: { ...prev[f], isCurrency: !prev[f].isCurrency },
+                }));
+            };
+
+            const dims = fields.filter(f => fieldConfig[f].role === "dimension");
+            const mets = fields.filter(f => fieldConfig[f].role === "metric");
+            const canProceed = dims.length > 0 && mets.length > 0;
+
+            const sampleVals = (f) => {
+                const uniq = [...new Set(rows.slice(0, 200).map(r => r[f]).filter(v => v !== null && v !== undefined && v !== ""))];
+                return uniq.slice(0, 5).join(", ") + (uniq.length > 5 ? " …" : "");
+            };
+
+            return (
+                <div style={{
+                    minHeight: "100vh", background: "#0F1117", color: "#E8E6F0",
+                    fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif",
+                    display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 20px",
+                }}>
+
+                    <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.02em" }}>Configure Your Fields</h1>
+                    <p style={{ color: "#8B8AA0", fontSize: 13, margin: "0 0 6px" }}>
+                        {rows.length.toLocaleString()} rows · {fields.length} fields detected
+                    </p>
+                    <p style={{ color: "#5A596E", fontSize: 12, margin: "0 0 32px", maxWidth: 540, textAlign: "center", lineHeight: 1.6 }}>
+                        Click each badge to toggle between <span style={{ color: "#6C5CE7", fontWeight: 600 }}>Dimension</span> (categories to branch by) and <span style={{ color: "#00B894", fontWeight: 600 }}>Metric</span> (numbers to aggregate). Mark currency fields with <span style={{ color: "#FDCB6E", fontWeight: 600 }}>$</span>.
+                    </p>
+
+                    <div style={{ width: "100%", maxWidth: 620, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {/* Column headers */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px 8px", borderBottom: "1px solid #1E2030" }}>
+                            <div style={{ width: 84, fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "#5A596E", letterSpacing: "0.06em" }}>Type</div>
+                            <div style={{ flex: 1, fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "#5A596E", letterSpacing: "0.06em" }}>Field</div>
+                            <div style={{ width: 28, fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "#5A596E", letterSpacing: "0.06em", textAlign: "center" }}>$</div>
+                        </div>
+
+                        {fields.map(f => {
+                            const cfg = fieldConfig[f];
+                            const isDim = cfg.role === "dimension";
+                            const accent = isDim ? "#6C5CE7" : "#00B894";
+                            return (
+                                <div key={f} style={{
+                                    display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+                                    background: "#16181F", border: "1px solid #1E2030", borderRadius: 10,
+                                    transition: "all 0.1s ease",
+                                }}>
+                                    <button onClick={() => toggleRole(f)} style={{
+                                        padding: "4px 0", borderRadius: 6, fontSize: 10, fontWeight: 700,
+                                        textTransform: "uppercase", letterSpacing: "0.06em",
+                                        border: `1px solid ${accent}44`, background: accent + "18", color: accent,
+                                        cursor: "pointer", width: 84, textAlign: "center", transition: "all 0.15s ease",
+                                    }}>
+                                        {isDim ? "Dimension" : "Metric"}
+                                    </button>
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{prettifyLabel(f)}</div>
+                                        <div style={{ fontSize: 10, color: "#5A596E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            {sampleVals(f)}
+                                        </div>
+                                    </div>
+
+                                    {!isDim ? (
+                                        <button onClick={() => toggleCurrency(f)} style={{
+                                            width: 28, height: 28, borderRadius: 6, fontSize: 14, fontWeight: 700,
+                                            border: `1px solid ${cfg.isCurrency ? "#FDCB6E55" : "#2A2E3D"}`,
+                                            background: cfg.isCurrency ? "#FDCB6E18" : "transparent",
+                                            color: cfg.isCurrency ? "#FDCB6E" : "#3A3F52",
+                                            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                                            transition: "all 0.15s ease",
+                                        }}>$</button>
+                                    ) : <div style={{ width: 28 }} />}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Summary */}
+                    <div style={{ display: "flex", gap: 16, marginTop: 24, fontSize: 12 }}>
+                        <span style={{ color: "#6C5CE7" }}>{dims.length} dimension{dims.length !== 1 ? "s" : ""}</span>
+                        <span style={{ color: "#3A3F52" }}>·</span>
+                        <span style={{ color: "#00B894" }}>{mets.length} metric{mets.length !== 1 ? "s" : ""}</span>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+                        <button onClick={onBack} style={{
+                            padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                            border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0", cursor: "pointer",
+                        }}>← Back</button>
+                        <button
+                            disabled={!canProceed}
+                            onClick={() => onConfirm(fieldConfig)}
+                            style={{
+                                padding: "10px 32px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                                border: "none", cursor: canProceed ? "pointer" : "not-allowed",
+                                background: canProceed ? "linear-gradient(135deg, #6C5CE7, #A29BFE)" : "#2A2E3D",
+                                color: canProceed ? "#fff" : "#5A596E",
+                                transition: "all 0.15s ease",
+                            }}
+                        >Start Exploring →</button>
+                    </div>
+                    {!canProceed && (
+                        <div style={{ marginTop: 12, fontSize: 11, color: "#E17055" }}>
+                            You need at least one dimension and one metric to proceed
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        /* ─── Explorer Screen ─── */
+
+        function ExplorerScreen({ data, dimensions, metrics, metricsMeta, labels, onReset }) {
+            const [branches, setBranches] = useState(() => dimensions.slice(0, Math.min(3, dimensions.length)));
+            const [metric, setMetric] = useState(metrics[0]);
+            const [expanded, setExpanded] = useState({});
+            const [defaultOpen, setDefaultOpen] = useState(true);
+            const [dragIdx, setDragIdx] = useState(null);
+
+            const tree = useMemo(() => buildTree(data, branches, metric), [data, branches, metric]);
+
+            const toggleExpand = useCallback((id) => {
+                setExpanded(prev => {
+                    const current = prev[id] !== undefined ? prev[id] : defaultOpen;
+                    return { ...prev, [id]: !current };
+                });
+            }, [defaultOpen]);
+
+            const expandAll = () => { setExpanded({}); setDefaultOpen(true); };
+            const collapseAll = () => { setExpanded({}); setDefaultOpen(false); };
+
+            const addBranch = (field) => { if (!branches.includes(field)) setBranches([...branches, field]); };
+            const removeBranch = (field) => { setBranches(branches.filter(b => b !== field)); setExpanded({}); };
+
+            const onDragStart = (e, idx) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+            const onDragOver = (e) => e.preventDefault();
+            const onDrop = (e, targetIdx) => {
+                e.preventDefault();
+                if (dragIdx === null || dragIdx === targetIdx) return;
+                const nb = [...branches];
+                const [moved] = nb.splice(dragIdx, 1);
+                nb.splice(targetIdx, 0, moved);
+                setBranches(nb);
+                setDragIdx(null);
+                setExpanded({});
+            };
+
+            const availableDims = dimensions.filter(d => !branches.includes(d));
+            const totalValue = tree.value;
+
+            return (
+                <div style={{ minHeight: "100vh", background: "#0F1117", color: "#E8E6F0", fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
+
+                    {/* Header */}
+                    <div style={{ borderBottom: "1px solid #1E2030", padding: "16px 24px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{
+                                width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #6C5CE7, #A29BFE)",
+                                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                            }}>🌿</div>
+                            <div>
+                                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Sales Tree Explorer</div>
+                                <div style={{ fontSize: 11, color: "#8B8AA0" }}>{data.length.toLocaleString()} rows · {dimensions.length} dimensions · {metrics.length} metrics</div>
+                            </div>
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        <div style={{ padding: "8px 16px", borderRadius: 8, background: "#1A1D27", border: "1px solid #2A2E3D", fontSize: 13 }}>
+                            <span style={{ color: "#8B8AA0" }}>Total {labels[metric]}: </span>
+                            <span style={{ fontWeight: 700, color: "#6C5CE7", fontSize: 15 }}>{fmtFull(totalValue, metric, metricsMeta)}</span>
+                        </div>
+                        <button onClick={onReset} style={{
+                            padding: "7px 14px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                            border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0", cursor: "pointer",
+                            transition: "all 0.15s ease",
+                        }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = "#6C5CE7"; e.currentTarget.style.color = "#A29BFE"; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = "#2A2E3D"; e.currentTarget.style.color = "#8B8AA0"; }}
+                        >↻ New CSV</button>
+                    </div>
+
+                    {/* Controls */}
+                    <div style={{ padding: "16px 24px", borderBottom: "1px solid #1E2030", display: "flex", flexDirection: "column", gap: 14 }}>
+                        {/* Metric selector */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8B8AA0" }}>Metric</span>
+                            {metrics.map(m => (
+                                <button key={m} onClick={() => setMetric(m)} style={{
+                                    padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                                    border: metric === m ? "1px solid #6C5CE7" : "1px solid #2A2E3D",
+                                    background: metric === m ? "#6C5CE722" : "transparent",
+                                    color: metric === m ? "#A29BFE" : "#8B8AA0",
+                                    cursor: "pointer", transition: "all 0.15s ease",
+                                }}>{labels[m]}</button>
+                            ))}
+                        </div>
+
+                        {/* Branch pills */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8B8AA0" }}>Branches</span>
+                            {branches.map((b, i) => (
+                                <DraggablePill key={b} label={labels[b]} field={b} index={i} color={DEPTH_COLORS[i % DEPTH_COLORS.length]}
+                                    onRemove={removeBranch} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} />
+                            ))}
+                            {branches.length > 0 && availableDims.length > 0 && <span style={{ color: "#5A596E", fontSize: 11 }}>→</span>}
+                        </div>
+
+                        {/* Add branch + actions */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            {availableDims.length > 0 && (
+                                <>
+                                    <span style={{ fontSize: 11, color: "#5A596E" }}>Add:</span>
+                                    {availableDims.map(d => (
+                                        <button key={d} onClick={() => addBranch(d)} style={{
+                                            padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                            border: "1px dashed #2A2E3D", background: "transparent", color: "#5A596E",
+                                            cursor: "pointer", transition: "all 0.15s ease",
+                                        }}
+                                            onMouseEnter={e => { e.currentTarget.style.borderColor = "#6C5CE7"; e.currentTarget.style.color = "#A29BFE"; }}
+                                            onMouseLeave={e => { e.currentTarget.style.borderColor = "#2A2E3D"; e.currentTarget.style.color = "#5A596E"; }}
+                                        >+ {labels[d]}</button>
+                                    ))}
+                                </>
+                            )}
+                            <div style={{ flex: 1 }} />
+                            <button onClick={expandAll} style={{
+                                padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0", cursor: "pointer",
+                            }}>Expand All</button>
+                            <button onClick={collapseAll} style={{
+                                padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0", cursor: "pointer",
+                            }}>Collapse All</button>
+                        </div>
+                    </div>
+
+                    {/* Tree */}
+                    <div style={{ padding: "20px 24px", overflowX: "auto" }}>
+                        {branches.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: 60, color: "#5A596E", fontSize: 14 }}>
+                                <div style={{ fontSize: 40, marginBottom: 16 }}>🌱</div>
+                                <div style={{ fontWeight: 600, marginBottom: 6 }}>No branches selected</div>
+                                <div>Add dimension branches above to start exploring your data</div>
+                            </div>
+                        ) : (
+                            <TreeNode node={tree} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={0} parentValue={null}
+                                expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        /* ─── App Root ─── */
+
+        function SalesTreeExplorer() {
+            const [phase, setPhase] = useState("upload");
+            const [rawData, setRawData] = useState(null);
+            const [fields, setFields] = useState([]);
+            const [dimensions, setDimensions] = useState([]);
+            const [metrics, setMetrics] = useState([]);
+            const [metricsMeta, setMetricsMeta] = useState({});
+            const [labels, setLabels] = useState({});
+            const [parsedData, setParsedData] = useState([]);
+
+            const handleDataReady = (rows, fieldNames) => {
+                setRawData(rows);
+                setFields(fieldNames);
+                setPhase("config");
+            };
+
+            const handleConfirm = (fieldConfig) => {
+                const dims = [];
+                const mets = [];
+                const meta = {};
+                const lbls = {};
+                fields.forEach(f => {
+                    lbls[f] = prettifyLabel(f);
+                    if (fieldConfig[f].role === "dimension") {
+                        dims.push(f);
+                    } else {
+                        mets.push(f);
+                        meta[f] = { isCurrency: fieldConfig[f].isCurrency };
+                    }
+                });
+                const data = rawData.map(row => {
+                    const r = { ...row };
+                    mets.forEach(m => { r[m] = Number(r[m]) || 0; });
+                    return r;
+                });
+                setDimensions(dims);
+                setMetrics(mets);
+                setMetricsMeta(meta);
+                setLabels(lbls);
+                setParsedData(data);
+                setPhase("explore");
+            };
+
+            const handleReset = () => {
+                setPhase("upload");
+                setRawData(null);
+                setFields([]);
+            };
+
+            if (phase === "upload") return <UploadScreen onDataReady={handleDataReady} />;
+            if (phase === "config") return <ConfigScreen fields={fields} rows={rawData} onConfirm={handleConfirm} onBack={handleReset} />;
+            return <ExplorerScreen data={parsedData} dimensions={dimensions} metrics={metrics} metricsMeta={metricsMeta} labels={labels} onReset={handleReset} />;
+        }
+
+        // Mount the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SalesTreeExplorer />);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,21 @@
+# User requested ignores
+AGENTS.md
+agents.md
+draft/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies (if any)
+node_modules/
+.pnp
+.pnp.js
+
+# Build output (if any)
+dist/
+build/

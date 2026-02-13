@@ -1,9 +1,65 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Analytics Tools</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
 <body>
+    <div class="container">
+        <header>
+            <div class="badge">Internal Tools</div>
+            <h1>Marketing Analytics</h1>
+            <p class="subtitle">Secure, client-side analysis tools for mindful marketers.</p>
+        </header>
 
-<h1>My First Heading</h1>
-<p>My first paragraph.</p>
+        <!-- Principles Section Removed -->
 
+        <!-- Tools Directory Section -->
+        <section class="tools-section">
+            <div class="section-header">
+                <h2>Available Tools</h2>
+            </div>
+
+            <!-- This grid will be populated with tools as they are added -->
+            <!-- Sales Tree Explorer -->
+            <a href="tools/sales-tree-explorer/index.html" class="tool-card">
+                <div class="tool-title">Sales Tree Explorer</div>
+                <div class="tool-desc">Upload a CSV to visualize your data as an interactive hierarchical tree.</div>
+                <div class="badge secure-badge" style="width: fit-content; margin-top: 1rem;">Client-side Only</div>
+            </a>
+
+            <!-- Empty State (Hidden) -->
+            <div class="empty-state" id="empty-state" style="display: none;">
+                <h3>No tools available yet</h3>
+                <p>Check back soon or consult <a href="AGENTS.md">AGENTS.md</a> to contribute.</p>
+            </div>
+    </div>
+    </section>
+
+
+    </div>
+
+    <script>
+        // Update Copyright Year
+        document.getElementById('year').textContent = new Date().getFullYear();
+
+        // Simple script to check for tools (simulate dynamic loading if we had an index)
+        // For now, we manually manage the empty state visibility based on content
+        const grid = document.getElementById('tools-grid');
+        const emptyState = document.getElementById('empty-state');
+
+        // Logic to hide empty state if real tools are added
+        if (grid.children.length > 1) { // >1 because empty-state div is always there
+            // emptyState.style.display = 'none';
+        }
+    </script>
 </body>
+
 </html>
