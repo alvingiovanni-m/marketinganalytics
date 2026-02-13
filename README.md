@@ -1,1 +1,1 @@
-# marketinganalytics.github.io
+# marketinganalytics
