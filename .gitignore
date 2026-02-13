@@ -1,7 +1,21 @@
 # User requested ignores
-AGENTS.md
-agents.md
 draft/
+
+# Data files (SECURITY: Never commit sensitive data)
+*.csv
+*.json
+*.xlsx
+*.xls
+*.xml
+data/
+*.db
+*.sqlite
+
+# Environment & Secrets
+.env
+.env.local
+*.key
+*.pem
 
 # System files
 .DS_Store
