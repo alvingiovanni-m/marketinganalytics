@@ -231,7 +231,7 @@
             );
         }
 
-        function DraggablePill({ label, field, onRemove, index, onDragStart, onDragOver, onDrop, color }) {
+        function DraggablePill({ label, field, onRemove, index, onDragStart, onDragOver, onDrop, color, filterInfo, onFilterClick }) {
             return (
                 <div
                     draggable
@@ -248,9 +248,17 @@
                 >
                     <span style={{ opacity: 0.5, fontSize: 10 }}>⠿</span>
                     {label}
+                    {filterInfo && <span style={{ opacity: 0.7, fontSize: 11 }}>({filterInfo})</span>}
+                    <span
+                        onClick={e => { e.stopPropagation(); onFilterClick(field); }}
+                        style={{ marginLeft: 2, cursor: "pointer", opacity: 0.6, fontSize: 12, lineHeight: 1, padding: "0 4px" }}
+                        onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                        onMouseLeave={e => e.currentTarget.style.opacity = "0.6"}
+                        title="Filter values"
+                    >🔍</span>
                     <span
                         onClick={e => { e.stopPropagation(); onRemove(field); }}
-                        style={{ marginLeft: 2, cursor: "pointer", opacity: 0.5, fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+                        style={{ marginLeft: 0, cursor: "pointer", opacity: 0.5, fontSize: 14, lineHeight: 1, padding: "0 2px" }}
                         onMouseEnter={e => e.currentTarget.style.opacity = "1"}
                         onMouseLeave={e => e.currentTarget.style.opacity = "0.5"}
                     >×</span>
@@ -485,6 +493,126 @@
             );
         }
 
+        /* ─── Filter Panel Component ─── */
+
+        function FilterPanel({ dimension, availableValues, selectedValues, labels, onToggle, onSelectAll, onDeselectAll, onClose }) {
+            const [searchTerm, setSearchTerm] = useState("");
+
+            const filteredValues = useMemo(() => {
+                if (!searchTerm) return availableValues;
+                const term = searchTerm.toLowerCase();
+                return availableValues.filter(v => v.value.toLowerCase().includes(term));
+            }, [availableValues, searchTerm]);
+
+            const allSelected = selectedValues && selectedValues.length === availableValues.length;
+            const someSelected = selectedValues && selectedValues.length > 0 && selectedValues.length < availableValues.length;
+
+            return (
+                <div style={{
+                    position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                    background: "rgba(15, 17, 23, 0.85)", backdropFilter: "blur(4px)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    zIndex: 1000, padding: 20,
+                }} onClick={onClose}>
+                    <div style={{
+                        background: "#16181F", border: "1px solid #2A2E3D", borderRadius: 12,
+                        maxWidth: 480, width: "100%", maxHeight: "80vh",
+                        display: "flex", flexDirection: "column",
+                        boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+                    }} onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div style={{ padding: "16px 20px", borderBottom: "1px solid #2A2E3D", display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E6F0" }}>Filter {labels[dimension]}</div>
+                                <div style={{ fontSize: 11, color: "#8B8AA0", marginTop: 2 }}>
+                                    {selectedValues && selectedValues.length > 0
+                                        ? `${selectedValues.length} of ${availableValues.length} selected`
+                                        : `All ${availableValues.length} values shown`}
+                                </div>
+                            </div>
+                            <button onClick={onClose} style={{
+                                width: 28, height: 28, borderRadius: 6, border: "1px solid #2A2E3D",
+                                background: "transparent", color: "#8B8AA0", cursor: "pointer",
+                                fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                                transition: "all 0.15s ease",
+                            }}>×</button>
+                        </div>
+
+                        {/* Search */}
+                        {availableValues.length > 10 && (
+                            <div style={{ padding: "12px 20px", borderBottom: "1px solid #1E2030" }}>
+                                <input
+                                    type="text"
+                                    placeholder="Search values..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    style={{
+                                        width: "100%", padding: "8px 12px", borderRadius: 6,
+                                        border: "1px solid #2A2E3D", background: "#0F1117", color: "#E8E6F0",
+                                        fontSize: 12, outline: "none", fontFamily: "'DM Sans', sans-serif",
+                                    }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Actions */}
+                        <div style={{ padding: "10px 20px", borderBottom: "1px solid #1E2030", display: "flex", gap: 8 }}>
+                            <button onClick={onSelectAll} style={{
+                                padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0",
+                                cursor: "pointer", transition: "all 0.15s ease",
+                            }}>Select All</button>
+                            <button onClick={onDeselectAll} style={{
+                                padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0",
+                                cursor: "pointer", transition: "all 0.15s ease",
+                            }}>Clear</button>
+                        </div>
+
+                        {/* Values list */}
+                        <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+                            {filteredValues.map(({ value, count }) => {
+                                const isSelected = selectedValues && selectedValues.includes(value);
+                                const displayValue = value === "true" ? "Yes" : value === "false" ? "No" : value;
+                                return (
+                                    <label key={value} style={{
+                                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                                        borderRadius: 6, cursor: "pointer", transition: "all 0.15s ease",
+                                        background: isSelected ? "#6C5CE710" : "transparent",
+                                    }}
+                                        onMouseEnter={e => e.currentTarget.style.background = isSelected ? "#6C5CE718" : "#1E203008"}
+                                        onMouseLeave={e => e.currentTarget.style.background = isSelected ? "#6C5CE710" : "transparent"}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => onToggle(dimension, value)}
+                                            style={{ cursor: "pointer", accentColor: "#6C5CE7" }}
+                                        />
+                                        <span style={{ flex: 1, fontSize: 13, color: "#E8E6F0", fontWeight: isSelected ? 600 : 400 }}>
+                                            {displayValue}
+                                        </span>
+                                        <span style={{ fontSize: 11, color: "#5A596E", fontVariantNumeric: "tabular-nums" }}>
+                                            {count.toLocaleString()}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{ padding: "12px 20px", borderTop: "1px solid #2A2E3D", display: "flex", justifyContent: "flex-end" }}>
+                            <button onClick={onClose} style={{
+                                padding: "8px 24px", borderRadius: 7, fontSize: 13, fontWeight: 600,
+                                border: "none", background: "linear-gradient(135deg, #6C5CE7, #A29BFE)",
+                                color: "#fff", cursor: "pointer", transition: "all 0.15s ease",
+                            }}>Done</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         /* ─── Explorer Screen ─── */
 
         function ExplorerScreen({ data, dimensions, metrics, metricsMeta, labels, onReset }) {
@@ -493,8 +621,42 @@
             const [expanded, setExpanded] = useState({});
             const [defaultOpen, setDefaultOpen] = useState(true);
             const [dragIdx, setDragIdx] = useState(null);
+            const [filters, setFilters] = useState({});
+            const [showFilterPanel, setShowFilterPanel] = useState(false);
+            const [filterDimension, setFilterDimension] = useState(null);
 
-            const tree = useMemo(() => buildTree(data, branches, metric), [data, branches, metric]);
+            // Get available values for each dimension with counts
+            const availableValues = useMemo(() => {
+                const result = {};
+                dimensions.forEach(dim => {
+                    const valueCounts = {};
+                    data.forEach(row => {
+                        const val = String(row[dim] ?? "N/A");
+                        valueCounts[val] = (valueCounts[val] || 0) + 1;
+                    });
+                    result[dim] = Object.entries(valueCounts)
+                        .map(([value, count]) => ({ value, count }))
+                        .sort((a, b) => b.count - a.count);
+                });
+                return result;
+            }, [data, dimensions]);
+
+            // Apply filters to data
+            const filteredData = useMemo(() => {
+                const filterKeys = Object.keys(filters);
+                if (filterKeys.length === 0) return data;
+
+                return data.filter(row => {
+                    return filterKeys.every(dim => {
+                        const selectedValues = filters[dim];
+                        if (!selectedValues || selectedValues.length === 0) return true;
+                        const rowValue = String(row[dim] ?? "N/A");
+                        return selectedValues.includes(rowValue);
+                    });
+                });
+            }, [data, filters]);
+
+            const tree = useMemo(() => buildTree(filteredData, branches, metric), [filteredData, branches, metric]);
 
             const toggleExpand = useCallback((id) => {
                 setExpanded(prev => {
@@ -522,8 +684,58 @@
                 setExpanded({});
             };
 
+            // Filter management
+            const openFilterPanel = (dim) => {
+                setFilterDimension(dim);
+                setShowFilterPanel(true);
+            };
+
+            const closeFilterPanel = () => {
+                setShowFilterPanel(false);
+                setFilterDimension(null);
+            };
+
+            const toggleFilterValue = (dim, value) => {
+                setFilters(prev => {
+                    const current = prev[dim] || [];
+                    const newValues = current.includes(value)
+                        ? current.filter(v => v !== value)
+                        : [...current, value];
+
+                    if (newValues.length === 0) {
+                        const { [dim]: removed, ...rest } = prev;
+                        return rest;
+                    }
+                    return { ...prev, [dim]: newValues };
+                });
+            };
+
+            const selectAllValues = (dim) => {
+                const allValues = availableValues[dim].map(v => v.value);
+                setFilters(prev => ({ ...prev, [dim]: allValues }));
+            };
+
+            const deselectAllValues = (dim) => {
+                setFilters(prev => {
+                    const { [dim]: removed, ...rest } = prev;
+                    return rest;
+                });
+            };
+
+            const clearAllFilters = () => {
+                setFilters({});
+            };
+
+            const clearFilter = (dim) => {
+                setFilters(prev => {
+                    const { [dim]: removed, ...rest } = prev;
+                    return rest;
+                });
+            };
+
             const availableDims = dimensions.filter(d => !branches.includes(d));
             const totalValue = tree.value;
+            const hasActiveFilters = Object.keys(filters).length > 0;
 
             return (
                 <div style={{ minHeight: "100vh", background: "#0F1117", color: "#E8E6F0", fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
@@ -547,7 +759,10 @@
                             }}>🌿</div>
                             <div>
                                 <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Sales Tree Explorer</div>
-                                <div style={{ fontSize: 11, color: "#8B8AA0" }}>{data.length.toLocaleString()} rows · {dimensions.length} dimensions · {metrics.length} metrics</div>
+                                <div style={{ fontSize: 11, color: "#8B8AA0" }}>
+                                    {hasActiveFilters && <span style={{ color: "#6C5CE7" }}>{filteredData.length.toLocaleString()} filtered / </span>}
+                                    {data.length.toLocaleString()} rows · {dimensions.length} dimensions · {metrics.length} metrics
+                                </div>
                             </div>
                         </div>
                         <div style={{ flex: 1 }} />
@@ -584,10 +799,16 @@
                         {/* Branch pills */}
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8B8AA0" }}>Branches</span>
-                            {branches.map((b, i) => (
-                                <DraggablePill key={b} label={labels[b]} field={b} index={i} color={DEPTH_COLORS[i % DEPTH_COLORS.length]}
-                                    onRemove={removeBranch} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} />
-                            ))}
+                            {branches.map((b, i) => {
+                                const filterCount = filters[b] ? filters[b].length : 0;
+                                const totalCount = availableValues[b] ? availableValues[b].length : 0;
+                                const filterInfo = filterCount > 0 ? `${filterCount}/${totalCount}` : null;
+                                return (
+                                    <DraggablePill key={b} label={labels[b]} field={b} index={i} color={DEPTH_COLORS[i % DEPTH_COLORS.length]}
+                                        onRemove={removeBranch} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
+                                        filterInfo={filterInfo} onFilterClick={openFilterPanel} />
+                                );
+                            })}
                             {branches.length > 0 && availableDims.length > 0 && <span style={{ color: "#5A596E", fontSize: 11 }}>→</span>}
                         </div>
 
@@ -609,6 +830,16 @@
                                 </>
                             )}
                             <div style={{ flex: 1 }} />
+                            {hasActiveFilters && (
+                                <button onClick={clearAllFilters} style={{
+                                    padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+                                    border: "1px solid #6C5CE744", background: "#6C5CE710", color: "#A29BFE", cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#6C5CE718"}
+                                    onMouseLeave={e => e.currentTarget.style.background = "#6C5CE710"}
+                                >Clear All Filters</button>
+                            )}
                             <button onClick={expandAll} style={{
                                 padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 500,
                                 border: "1px solid #2A2E3D", background: "transparent", color: "#8B8AA0", cursor: "pointer",
@@ -628,11 +859,31 @@
                                 <div style={{ fontWeight: 600, marginBottom: 6 }}>No branches selected</div>
                                 <div>Add dimension branches above to start exploring your data</div>
                             </div>
+                        ) : filteredData.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: 60, color: "#5A596E", fontSize: 14 }}>
+                                <div style={{ fontSize: 40, marginBottom: 16 }}>🔍</div>
+                                <div style={{ fontWeight: 600, marginBottom: 6 }}>No data matches your filters</div>
+                                <div>Try adjusting or clearing your filters</div>
+                            </div>
                         ) : (
                             <TreeNode node={tree} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={0} parentValue={null}
                                 expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
                         )}
                     </div>
+
+                    {/* Filter Panel Modal */}
+                    {showFilterPanel && filterDimension && (
+                        <FilterPanel
+                            dimension={filterDimension}
+                            availableValues={availableValues[filterDimension]}
+                            selectedValues={filters[filterDimension]}
+                            labels={labels}
+                            onToggle={toggleFilterValue}
+                            onSelectAll={() => selectAllValues(filterDimension)}
+                            onDeselectAll={() => deselectAllValues(filterDimension)}
+                            onClose={closeFilterPanel}
+                        />
+                    )}
                 </div>
             );
         }
