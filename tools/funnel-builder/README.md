@@ -5,7 +5,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 ## Features
 
 - **Add/Remove Nodes** — Double-click the canvas or use the toolbar button to create nodes. Each node has a label and any number of custom metrics (key, label, value).
-- **CSV Data Upload** — Upload a CSV file to automatically populate node metrics from your data. Select any row to auto-fill a node's metrics.
+- **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
 - **Edge Calculations** — Add custom formulas to connections. Expressions reference source and target metrics using `source.<key>` and `target.<key>` syntax. Results are displayed live on the connection label.
@@ -22,16 +22,63 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 5. **Add calculations to a connection**: Click the connection arrow or its label to select it. In the properties panel, add calculations using expressions like `(target.purchasers / source.lead_count) * 100`.
 6. **Export**: Click "Export" to download your funnel as JSON. Click "Import" to load a previously exported file.
 
-## Using CSV Data
+## Pivot-Table CSV Integration
 
-The Funnel Builder supports uploading CSV files to quickly populate node metrics with your data:
+The Funnel Builder supports powerful pivot-table-style data analysis using CSV files:
+
+### Getting Started
 
 1. **Upload a CSV**: Click "Upload CSV" in the toolbar and select a CSV file. The first row is treated as headers.
-2. **Select a CSV row for a node**: Click a node to open the properties panel. In the "CSV Data" section, select a row from the dropdown. The node's metrics will automatically populate with the values from that row.
-3. **Edit metrics**: After auto-populating from CSV, you can manually edit any metric values. They remain independent of the CSV.
-4. **Re-sync from CSV**: If you've edited metrics and want to reset them to the CSV values, click the "Re-sync from CSV" button.
-5. **Clear CSV**: Click the "×" button next to the CSV indicator in the toolbar to remove the loaded CSV data. Existing node metrics are preserved.
-6. **Persistence**: CSV data is saved to localStorage and included in JSON exports, so your funnels remain fully portable.
+2. **Configure a node**: Click a node to open the properties panel. You'll see three sections: **Data Filters**, **CSV Metrics**, and **Additional Metrics**.
+
+### Data Filters
+
+Filter which rows from your CSV should be included in calculations for this node:
+
+1. Click **"+ Add Filter"** to create a new filter.
+2. Select a **column** from your CSV data.
+3. Choose an **operator**: Equals, Not Equals, Contains, Greater Than, Less Than.
+4. Enter a **value** to filter by (autocomplete suggestions appear from your data).
+5. The row count indicator shows how many rows match your filters (e.g., "42 of 150 rows match").
+
+Filters combine with AND logic — all filters must match for a row to be included.
+
+### CSV Metrics
+
+Configure aggregations to compute metrics from your filtered data:
+
+1. Click **"+ Add CSV Metric"** to create a new metric.
+2. Select a **column** to aggregate.
+3. Choose an **aggregation type**:
+   - **SUM**: Sum of all numeric values in the column
+   - **AVG**: Average of numeric values
+   - **COUNT**: Total number of rows
+   - **MIN**: Minimum numeric value
+   - **MAX**: Maximum numeric value
+   - **COUNT_DISTINCT**: Count of unique values
+4. Set a **key** (for use in edge calculations) — auto-generated but editable.
+5. Set a **label** (display name on the node) — auto-generated but editable.
+6. The **computed value** updates live as you change filters or aggregation settings.
+
+CSV metrics are computed on the client side and appear on your node alongside any manual metrics.
+
+### Example Use Case
+
+**CSV Data:**
+```csv
+Lead Source,Lead Count,Cost,Revenue
+Facebook Ads,1500,3750,12000
+Facebook Ads,2200,5500,18000
+Google Ads,800,2400,9000
+Google Ads,1200,3600,11000
+```
+
+**Node Configuration:**
+- **Filter**: Lead Source equals "Facebook Ads"
+- **Metric 1**: SUM of Lead Count → key: `total_leads`, value: 3700
+- **Metric 2**: SUM of Revenue → key: `total_revenue`, value: 30000
+
+Now you can reference `source.total_leads` and `source.total_revenue` in edge calculations!
 
 ### CSV Format
 
@@ -47,7 +94,11 @@ Google Ads,2200,3.10,4.1
 Email Campaign,800,0.50,5.5
 ```
 
-When you select a row, the headers become metric keys (e.g., `lead_source`, `lead_count`) and can be referenced in edge calculations.
+### Additional Features
+
+- **Clear CSV**: Click the "×" button next to the CSV indicator in the toolbar to remove the loaded CSV data.
+- **Manual Metrics**: You can still add manual metrics in the "Additional Metrics" section — they work alongside CSV metrics.
+- **Persistence**: CSV data, filters, and metric configurations are saved to localStorage and included in JSON exports.
 
 ## Data Structure (JSON)
 
@@ -56,13 +107,21 @@ When you select a row, the headers become metric keys (e.g., `lead_source`, `lea
   "nodes": [
     {
       "id": "node-1",
-      "label": "Lead Source 1",
+      "label": "Facebook Ads Funnel",
       "position": { "x": 96, "y": 72 },
       "metrics": [
-        { "key": "lead_count", "label": "Lead Count", "value": 1500 }
+        { "key": "manual_metric", "label": "Manual Metric", "value": 100 }
       ],
       "color": 0,
-      "csvRowIndex": 0
+      "csvConfig": {
+        "filters": [
+          { "column": "lead_source", "operator": "equals", "value": "Facebook Ads" }
+        ],
+        "metrics": [
+          { "column": "lead_count", "aggregation": "SUM", "key": "total_leads", "label": "Total Leads" },
+          { "column": "revenue", "aggregation": "SUM", "key": "total_revenue", "label": "Total Revenue" }
+        ]
+      }
     }
   ],
   "edges": [
@@ -73,17 +132,18 @@ When you select a row, the headers become metric keys (e.g., `lead_source`, `lea
       "calculations": [
         {
           "label": "Conversion Rate",
-          "expression": "(target.purchasers / source.lead_count) * 100",
+          "expression": "(target.purchasers / source.total_leads) * 100",
           "unit": "%"
         }
       ]
     }
   ],
   "csvData": {
-    "headers": ["lead_source", "lead_count", "cost_per_lead"],
-    "rawHeaders": ["Lead Source", "Lead Count", "Cost Per Lead"],
+    "headers": ["lead_source", "lead_count", "revenue"],
+    "rawHeaders": ["Lead Source", "Lead Count", "Revenue"],
     "rows": [
-      { "lead_source": "Facebook Ads", "lead_count": "1500", "cost_per_lead": "2.50" }
+      { "lead_source": "Facebook Ads", "lead_count": "1500", "revenue": "12000" },
+      { "lead_source": "Google Ads", "lead_count": "800", "revenue": "9000" }
     ],
     "fileName": "marketing_data.csv"
   }

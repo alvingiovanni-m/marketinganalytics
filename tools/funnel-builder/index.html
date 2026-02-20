@@ -527,6 +527,16 @@
             margin-bottom: 0;
         }
 
+        .filter-card {
+            background: #fef9e7;
+            border-color: #f9e79f;
+        }
+
+        .csv-metric-card {
+            background: #eef4ff;
+            border-color: #c3d9ff;
+        }
+
         .metric-card-header {
             display: flex;
             align-items: center;
@@ -1053,6 +1063,107 @@
         }
 
         // ========================
+        // CSV Aggregation Engine
+        // ========================
+        const AGGREGATION_TYPES = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'COUNT_DISTINCT'];
+
+        function applyFilters(rows, filters) {
+            if (!filters || filters.length === 0) return rows;
+
+            return rows.filter(row => {
+                return filters.every(filter => {
+                    const { column, operator, value } = filter;
+                    if (!column || !operator) return true; // Skip incomplete filters
+
+                    const cellValue = row[column];
+
+                    switch (operator) {
+                        case 'equals': {
+                            return String(cellValue).toLowerCase() === String(value).toLowerCase();
+                        }
+                        case 'not_equals': {
+                            return String(cellValue).toLowerCase() !== String(value).toLowerCase();
+                        }
+                        case 'contains': {
+                            return String(cellValue).toLowerCase().includes(String(value).toLowerCase());
+                        }
+                        case 'greater_than': {
+                            const numCell = parseFloat(cellValue);
+                            const numValue = parseFloat(value);
+                            return !isNaN(numCell) && !isNaN(numValue) && numCell > numValue;
+                        }
+                        case 'less_than': {
+                            const numCell = parseFloat(cellValue);
+                            const numValue = parseFloat(value);
+                            return !isNaN(numCell) && !isNaN(numValue) && numCell < numValue;
+                        }
+                        default:
+                            return true;
+                    }
+                });
+            });
+        }
+
+        function aggregate(rows, column, aggregationType) {
+            if (!rows || rows.length === 0) return 0;
+
+            switch (aggregationType) {
+                case 'COUNT': {
+                    return rows.length;
+                }
+                case 'SUM': {
+                    return rows.reduce((sum, row) => {
+                        const val = parseFloat(row[column]);
+                        return sum + (isNaN(val) ? 0 : val);
+                    }, 0);
+                }
+                case 'AVG': {
+                    const numericValues = rows
+                        .map(row => parseFloat(row[column]))
+                        .filter(val => !isNaN(val));
+                    if (numericValues.length === 0) return 0;
+                    return numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length;
+                }
+                case 'MIN': {
+                    const numericValues = rows
+                        .map(row => parseFloat(row[column]))
+                        .filter(val => !isNaN(val));
+                    if (numericValues.length === 0) return 0;
+                    return Math.min(...numericValues);
+                }
+                case 'MAX': {
+                    const numericValues = rows
+                        .map(row => parseFloat(row[column]))
+                        .filter(val => !isNaN(val));
+                    if (numericValues.length === 0) return 0;
+                    return Math.max(...numericValues);
+                }
+                case 'COUNT_DISTINCT': {
+                    const uniqueValues = new Set(rows.map(row => row[column]));
+                    return uniqueValues.size;
+                }
+                default:
+                    return 0;
+            }
+        }
+
+        function computeNodeMetrics(csvData, csvConfig) {
+            if (!csvData || !csvConfig || !csvConfig.metrics || csvConfig.metrics.length === 0) {
+                return [];
+            }
+
+            // Apply filters first
+            const filteredRows = applyFilters(csvData.rows, csvConfig.filters || []);
+
+            // Compute each metric
+            return csvConfig.metrics.map(metricDef => {
+                const { column, aggregation, key, label } = metricDef;
+                const value = aggregate(filteredRows, column, aggregation);
+                return { key, label, value };
+            });
+        }
+
+        // ========================
         // App Component
         // ========================
         function App() {
@@ -1078,7 +1189,22 @@
                     const saved = localStorage.getItem(STORAGE_KEY);
                     if (saved) {
                         const data = JSON.parse(saved);
-                        if (data.nodes) setNodes(data.nodes);
+
+                        // Migrate old csvRowIndex format to new csvConfig format
+                        if (data.nodes) {
+                            const migratedNodes = data.nodes.map(node => {
+                                if (node.csvRowIndex !== undefined && !node.csvConfig) {
+                                    // Old format - convert to new format
+                                    // Since we don't have aggregation info, we'll just remove csvRowIndex
+                                    // and let the user reconfigure with the new system
+                                    const { csvRowIndex, ...rest } = node;
+                                    return { ...rest, csvConfig: null };
+                                }
+                                return node;
+                            });
+                            setNodes(migratedNodes);
+                        }
+
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                     }
@@ -1376,6 +1502,26 @@
                 return map;
             }, [nodes]);
 
+            // ---- Compute effective metrics for nodes with CSV config ----
+            const nodesWithComputedMetrics = useMemo(() => {
+                return nodes.map(node => {
+                    // If node has csvConfig with metrics, compute them
+                    if (csvData && node.csvConfig && node.csvConfig.metrics && node.csvConfig.metrics.length > 0) {
+                        const csvMetrics = computeNodeMetrics(csvData, node.csvConfig);
+                        // Combine CSV metrics with manual metrics
+                        return { ...node, metrics: [...csvMetrics, ...(node.metrics || [])] };
+                    }
+                    // Otherwise use manual metrics as-is
+                    return node;
+                });
+            }, [nodes, csvData]);
+
+            const nodesByIdWithMetrics = useMemo(() => {
+                const map = {};
+                nodesWithComputedMetrics.forEach(n => map[n.id] = n);
+                return map;
+            }, [nodesWithComputedMetrics]);
+
             const selectedNode = selectedNodeId ? nodesById[selectedNodeId] : null;
             const selectedEdge = selectedEdgeId ? edges.find(e => e.id === selectedEdgeId) : null;
 
@@ -1459,8 +1605,8 @@
                                     </marker>
                                 </defs>
                                 {edges.map(edge => {
-                                    const srcNode = nodesById[edge.from];
-                                    const tgtNode = nodesById[edge.to];
+                                    const srcNode = nodesByIdWithMetrics[edge.from];
+                                    const tgtNode = nodesByIdWithMetrics[edge.to];
                                     if (!srcNode || !tgtNode) return null;
                                     const src = getOutputPort(srcNode);
                                     const tgt = getInputPort(tgtNode);
@@ -1481,7 +1627,7 @@
                                     );
                                 })}
                                 {connecting && (() => {
-                                    const srcNode = nodesById[connecting.fromId];
+                                    const srcNode = nodesByIdWithMetrics[connecting.fromId];
                                     if (!srcNode) return null;
                                     const src = getOutputPort(srcNode);
                                     return <path d={getBezierPath(src, mousePos)} className="temp-edge" />;
@@ -1490,8 +1636,8 @@
 
                             {/* Edge Labels */}
                             {edges.map(edge => {
-                                const srcNode = nodesById[edge.from];
-                                const tgtNode = nodesById[edge.to];
+                                const srcNode = nodesByIdWithMetrics[edge.from];
+                                const tgtNode = nodesByIdWithMetrics[edge.to];
                                 if (!srcNode || !tgtNode) return null;
                                 if (!edge.calculations || edge.calculations.length === 0) return null;
                                 const src = getOutputPort(srcNode);
@@ -1519,7 +1665,7 @@
                             })}
 
                             {/* Nodes */}
-                            {nodes.map(node => (
+                            {nodesWithComputedMetrics.map(node => (
                                 <FunnelNode
                                     key={node.id}
                                     node={node}
@@ -1562,8 +1708,8 @@
                                 {selectedEdge && (
                                     <EdgeEditor
                                         edge={selectedEdge}
-                                        sourceNode={nodesById[selectedEdge.from]}
-                                        targetNode={nodesById[selectedEdge.to]}
+                                        sourceNode={nodesByIdWithMetrics[selectedEdge.from]}
+                                        targetNode={nodesByIdWithMetrics[selectedEdge.to]}
                                         onUpdate={(updates) => updateEdge(selectedEdge.id, updates)}
                                         onDelete={() => deleteEdge(selectedEdge.id)}
                                     />
@@ -1687,6 +1833,21 @@
         // NodeEditor Component
         // ========================
         function NodeEditor({ node, csvData, onUpdate, onDelete }) {
+            const csvConfig = node.csvConfig || { filters: [], metrics: [] };
+
+            // Helper to get distinct values for a column
+            const getDistinctValues = (column) => {
+                if (!csvData) return [];
+                const values = csvData.rows.map(row => row[column]).filter(v => v);
+                return [...new Set(values)].slice(0, 20); // Limit to 20 for performance
+            };
+
+            // Helper to count filtered rows
+            const getFilteredRowCount = () => {
+                if (!csvData) return 0;
+                return applyFilters(csvData.rows, csvConfig.filters || []).length;
+            };
+
             return (
                 <div>
                     <div className="panel-section">
@@ -1715,57 +1876,198 @@
                         </div>
                     </div>
 
+                    {/* Data Filters Section */}
                     {csvData && (
                         <div className="panel-section">
-                            <div className="panel-section-title">CSV Data</div>
-                            <div className="panel-field">
-                                <label>Select CSV Row</label>
-                                <select
-                                    value={node.csvRowIndex !== undefined ? node.csvRowIndex : ''}
-                                    onChange={e => {
-                                        const rowIndex = e.target.value === '' ? undefined : parseInt(e.target.value);
-                                        if (rowIndex !== undefined) {
-                                            const row = csvData.rows[rowIndex];
-                                            const newMetrics = csvData.headers.map((key, i) => ({
-                                                key: key,
-                                                label: csvData.rawHeaders[i],
-                                                value: row[key] || '',
-                                            }));
-                                            onUpdate({ csvRowIndex: rowIndex, metrics: newMetrics });
-                                        } else {
-                                            onUpdate({ csvRowIndex: undefined });
-                                        }
-                                    }}
-                                    style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
-                                >
-                                    <option value="">-- Select a row --</option>
-                                    {csvData.rows.map((row, i) => {
-                                        const preview = csvData.headers.slice(0, 3).map(h => row[h]).filter(v => v).join(' | ') || `Row ${i + 1}`;
-                                        return <option key={i} value={i}>{preview}</option>;
-                                    })}
-                                </select>
+                            <div className="panel-section-title">Data Filters</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                {getFilteredRowCount()} of {csvData.rows.length} rows match
                             </div>
-                            {node.csvRowIndex !== undefined && (
-                                <button
-                                    className="add-btn"
-                                    onClick={() => {
-                                        const row = csvData.rows[node.csvRowIndex];
-                                        const newMetrics = csvData.headers.map((key, i) => ({
-                                            key: key,
-                                            label: csvData.rawHeaders[i],
-                                            value: row[key] || '',
-                                        }));
-                                        onUpdate({ metrics: newMetrics });
-                                    }}
-                                >
-                                    Re-sync from CSV
-                                </button>
-                            )}
+                            {(csvConfig.filters || []).map((filter, i) => (
+                                <div key={i} className="metric-card filter-card">
+                                    <div className="metric-card-header">
+                                        <span className="metric-card-title">Filter {i + 1}</span>
+                                        <button className="metric-delete-btn" onClick={() => {
+                                            const filters = [...(csvConfig.filters || [])];
+                                            filters.splice(i, 1);
+                                            onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                        }}>&times;</button>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Column</label>
+                                        <select
+                                            value={filter.column || ''}
+                                            onChange={e => {
+                                                const filters = [...(csvConfig.filters || [])];
+                                                filters[i] = { ...filter, column: e.target.value };
+                                                onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="">-- Select column --</option>
+                                            {csvData.headers.map((h, idx) => (
+                                                <option key={idx} value={h}>{csvData.rawHeaders[idx]}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Operator</label>
+                                        <select
+                                            value={filter.operator || 'equals'}
+                                            onChange={e => {
+                                                const filters = [...(csvConfig.filters || [])];
+                                                filters[i] = { ...filter, operator: e.target.value };
+                                                onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="equals">Equals</option>
+                                            <option value="not_equals">Not Equals</option>
+                                            <option value="contains">Contains</option>
+                                            <option value="greater_than">Greater Than</option>
+                                            <option value="less_than">Less Than</option>
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Value</label>
+                                        <input
+                                            list={`filter-${i}-values`}
+                                            value={filter.value || ''}
+                                            onChange={e => {
+                                                const filters = [...(csvConfig.filters || [])];
+                                                filters[i] = { ...filter, value: e.target.value };
+                                                onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                            }}
+                                            placeholder="Enter value..."
+                                        />
+                                        <datalist id={`filter-${i}-values`}>
+                                            {filter.column && getDistinctValues(filter.column).map((val, vi) => (
+                                                <option key={vi} value={val} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                            ))}
+                            <button className="add-btn" onClick={() => {
+                                const filters = [...(csvConfig.filters || []), { column: '', operator: 'equals', value: '' }];
+                                onUpdate({ csvConfig: { ...csvConfig, filters } });
+                            }}>+ Add Filter</button>
                         </div>
                     )}
 
+                    {/* CSV Metrics Section */}
+                    {csvData && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">CSV Metrics</div>
+                            {(csvConfig.metrics || []).map((metric, i) => {
+                                const filteredRows = applyFilters(csvData.rows, csvConfig.filters || []);
+                                const computedValue = aggregate(filteredRows, metric.column, metric.aggregation);
+                                return (
+                                    <div key={i} className="metric-card csv-metric-card">
+                                        <div className="metric-card-header">
+                                            <span className="metric-card-title">CSV Metric {i + 1}</span>
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const metrics = [...(csvConfig.metrics || [])];
+                                                metrics.splice(i, 1);
+                                                onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                            }}>&times;</button>
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Column</label>
+                                            <select
+                                                value={metric.column || ''}
+                                                onChange={e => {
+                                                    const metrics = [...(csvConfig.metrics || [])];
+                                                    const col = e.target.value;
+                                                    const colIdx = csvData.headers.indexOf(col);
+                                                    const rawName = csvData.rawHeaders[colIdx] || col;
+                                                    const agg = metrics[i].aggregation || 'SUM';
+                                                    metrics[i] = {
+                                                        ...metric,
+                                                        column: col,
+                                                        key: metric.key || `${agg.toLowerCase()}_${col}`,
+                                                        label: metric.label || `${agg} of ${rawName}`,
+                                                    };
+                                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                                }}
+                                                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                            >
+                                                <option value="">-- Select column --</option>
+                                                {csvData.headers.map((h, idx) => (
+                                                    <option key={idx} value={h}>{csvData.rawHeaders[idx]}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Aggregation</label>
+                                            <select
+                                                value={metric.aggregation || 'SUM'}
+                                                onChange={e => {
+                                                    const metrics = [...(csvConfig.metrics || [])];
+                                                    const agg = e.target.value;
+                                                    const col = metrics[i].column;
+                                                    const colIdx = csvData.headers.indexOf(col);
+                                                    const rawName = csvData.rawHeaders[colIdx] || col;
+                                                    metrics[i] = {
+                                                        ...metric,
+                                                        aggregation: agg,
+                                                        key: metric.key || `${agg.toLowerCase()}_${col}`,
+                                                        label: metric.label || `${agg} of ${rawName}`,
+                                                    };
+                                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                                }}
+                                                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                            >
+                                                {AGGREGATION_TYPES.map(agg => (
+                                                    <option key={agg} value={agg}>{agg}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Key (for expressions)</label>
+                                            <input
+                                                value={metric.key || ''}
+                                                onChange={e => {
+                                                    const metrics = [...(csvConfig.metrics || [])];
+                                                    metrics[i] = { ...metric, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() };
+                                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                                }}
+                                                placeholder="e.g. sum_lead_count"
+                                            />
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Display Label</label>
+                                            <input
+                                                value={metric.label || ''}
+                                                onChange={e => {
+                                                    const metrics = [...(csvConfig.metrics || [])];
+                                                    metrics[i] = { ...metric, label: e.target.value };
+                                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                                }}
+                                                placeholder="e.g. Total Leads"
+                                            />
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Computed Value</label>
+                                            <input
+                                                value={formatNumber(computedValue)}
+                                                readOnly
+                                                style={{ background: '#f0f0f0', fontWeight: 600, color: 'var(--primary)' }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <button className="add-btn" onClick={() => {
+                                const metrics = [...(csvConfig.metrics || []), { column: '', aggregation: 'SUM', key: '', label: '' }];
+                                onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                            }}>+ Add CSV Metric</button>
+                        </div>
+                    )}
+
+                    {/* Manual Metrics Section */}
                     <div className="panel-section">
-                        <div className="panel-section-title">Metrics</div>
+                        <div className="panel-section-title">{csvData && csvConfig.metrics && csvConfig.metrics.length > 0 ? 'Additional Metrics' : 'Metrics'}</div>
                         {node.metrics.map((m, i) => (
                             <div key={i} className="metric-card">
                                 <div className="metric-card-header">
