@@ -5,6 +5,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 ## Features
 
 - **Add/Remove Nodes** — Double-click the canvas or use the toolbar button to create nodes. Each node has a label and any number of custom metrics (key, label, value).
+- **Duplicate Nodes** — Clone an existing node with all its properties (metrics, color, CSV configuration) using the "Duplicate Node" button in the properties panel or the `Ctrl+D` / `Cmd+D` keyboard shortcut.
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
@@ -155,6 +156,7 @@ Email Campaign,800,0.50,5.5
 | Key | Action |
 |-----|--------|
 | Double-click canvas | Add new node |
+| Ctrl+D / Cmd+D | Duplicate selected node |
 | Delete / Backspace | Delete selected node or edge |
 | Escape | Cancel connection / deselect |
 | Scroll wheel | Zoom in/out |

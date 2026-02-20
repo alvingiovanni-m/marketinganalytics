@@ -594,6 +594,26 @@
             border-top: 1px solid var(--panel-border);
         }
 
+        .duplicate-btn {
+            width: 100%;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: inherit;
+            border: 1px solid var(--primary);
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: 8px;
+        }
+
+        .duplicate-btn:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+
         .delete-btn {
             width: 100%;
             padding: 10px;
@@ -1240,10 +1260,16 @@
                             setSelectedEdgeId(null);
                         }
                     }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                        e.preventDefault();
+                        if (selectedNodeId) {
+                            duplicateNode(selectedNodeId);
+                        }
+                    }
                 }
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [selectedNodeId, selectedEdgeId]);
+            }, [selectedNodeId, selectedEdgeId, duplicateNode]);
 
             // ---- Node CRUD ----
             const addNode = useCallback((x, y) => {
@@ -1268,6 +1294,30 @@
                 setEdges(prev => prev.filter(e => e.from !== id && e.to !== id));
                 setSelectedNodeId(prev => prev === id ? null : prev);
             }, []);
+
+            const duplicateNode = useCallback((id) => {
+                const source = nodes.find(n => n.id === id);
+                if (!source) return;
+                const newNode = {
+                    id: genId('node'),
+                    label: source.label + ' (copy)',
+                    position: {
+                        x: snapToGrid(source.position.x + 40),
+                        y: snapToGrid(source.position.y + 40),
+                    },
+                    metrics: source.metrics.map(m => ({ ...m })),
+                    color: source.color,
+                    ...(source.csvConfig ? {
+                        csvConfig: {
+                            filters: (source.csvConfig.filters || []).map(f => ({ ...f })),
+                            metrics: (source.csvConfig.metrics || []).map(m => ({ ...m })),
+                        }
+                    } : {}),
+                };
+                setNodes(prev => [...prev, newNode]);
+                setSelectedNodeId(newNode.id);
+                setSelectedEdgeId(null);
+            }, [nodes]);
 
             // ---- Edge CRUD ----
             const addEdge = useCallback((fromId, toId) => {
@@ -1703,6 +1753,7 @@
                                         csvData={csvData}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
+                                        onDuplicate={() => duplicateNode(selectedNode.id)}
                                     />
                                 )}
                                 {selectedEdge && (
@@ -1832,7 +1883,7 @@
         // ========================
         // NodeEditor Component
         // ========================
-        function NodeEditor({ node, csvData, onUpdate, onDelete }) {
+        function NodeEditor({ node, csvData, onUpdate, onDelete, onDuplicate }) {
             const csvConfig = node.csvConfig || { filters: [], metrics: [] };
 
             // Helper to get distinct values for a column
@@ -2123,6 +2174,7 @@
                     </div>
 
                     <div className="delete-section">
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate Node</button>
                         <button className="delete-btn" onClick={onDelete}>Delete Node</button>
                     </div>
                 </div>
