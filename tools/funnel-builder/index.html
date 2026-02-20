@@ -315,8 +315,8 @@
         /* Ports */
         .node-port {
             position: absolute;
-            width: 12px;
-            height: 12px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             background: #fff;
             border: 2px solid var(--port-color);
@@ -334,11 +334,11 @@
         }
 
         .node-port.port-input {
-            left: -7px;
+            left: -9px;
         }
 
         .node-port.port-output {
-            right: -7px;
+            right: -9px;
         }
 
         .node-port.connectable {
@@ -971,6 +971,87 @@
             return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
         }
 
+        // CSV Parser - handles quoted fields, treats first row as headers
+        function parseCSV(text) {
+            const lines = [];
+            let currentLine = [];
+            let currentField = '';
+            let inQuotes = false;
+            let i = 0;
+
+            // Parse character by character to handle quoted fields
+            while (i < text.length) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+
+                if (inQuotes) {
+                    if (char === '"' && nextChar === '"') {
+                        // Escaped quote
+                        currentField += '"';
+                        i += 2;
+                    } else if (char === '"') {
+                        // End of quoted field
+                        inQuotes = false;
+                        i++;
+                    } else {
+                        // Inside quoted field
+                        currentField += char;
+                        i++;
+                    }
+                } else {
+                    if (char === '"') {
+                        // Start of quoted field
+                        inQuotes = true;
+                        i++;
+                    } else if (char === ',') {
+                        // Field separator
+                        currentLine.push(currentField.trim());
+                        currentField = '';
+                        i++;
+                    } else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+                        // Line separator
+                        currentLine.push(currentField.trim());
+                        if (currentLine.some(f => f.length > 0)) {
+                            lines.push(currentLine);
+                        }
+                        currentLine = [];
+                        currentField = '';
+                        i += (char === '\r' && nextChar === '\n') ? 2 : 1;
+                    } else {
+                        // Regular character
+                        currentField += char;
+                        i++;
+                    }
+                }
+            }
+
+            // Handle last field and line
+            currentLine.push(currentField.trim());
+            if (currentLine.some(f => f.length > 0)) {
+                lines.push(currentLine);
+            }
+
+            if (lines.length === 0) return { headers: [], rows: [] };
+
+            // First row is headers
+            const rawHeaders = lines[0];
+            const sanitizeKey = (str) => str.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+            const headers = rawHeaders.map(sanitizeKey);
+
+            // Convert remaining rows to objects
+            const rows = [];
+            for (let j = 1; j < lines.length; j++) {
+                const row = {};
+                const values = lines[j];
+                for (let k = 0; k < headers.length; k++) {
+                    row[headers[k]] = values[k] || '';
+                }
+                rows.push(row);
+            }
+
+            return { headers, rows, rawHeaders };
+        }
+
         // ========================
         // App Component
         // ========================
@@ -984,8 +1065,10 @@
             const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
             const [isPanning, setIsPanning] = useState(false);
             const [confirmAction, setConfirmAction] = useState(null);
+            const [csvData, setCsvData] = useState(null);
             const viewportRef = useRef(null);
             const fileInputRef = useRef(null);
+            const csvFileInputRef = useRef(null);
             const panActiveRef = useRef(false);
             const initialLoadRef = useRef(false);
 
@@ -997,6 +1080,7 @@
                         const data = JSON.parse(saved);
                         if (data.nodes) setNodes(data.nodes);
                         if (data.edges) setEdges(data.edges);
+                        if (data.csvData) setCsvData(data.csvData);
                     }
                 } catch { }
                 initialLoadRef.current = true;
@@ -1006,10 +1090,10 @@
             useEffect(() => {
                 if (!initialLoadRef.current) return;
                 const t = setTimeout(() => {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, csvData }));
                 }, 300);
                 return () => clearTimeout(t);
-            }, [nodes, edges]);
+            }, [nodes, edges, csvData]);
 
             // Keyboard shortcuts
             useEffect(() => {
@@ -1183,7 +1267,7 @@
 
             // ---- Import/Export ----
             const exportJSON = useCallback(() => {
-                const data = JSON.stringify({ nodes, edges }, null, 2);
+                const data = JSON.stringify({ nodes, edges, csvData }, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -1191,7 +1275,7 @@
                 a.download = 'funnel-builder-export.json';
                 a.click();
                 URL.revokeObjectURL(url);
-            }, [nodes, edges]);
+            }, [nodes, edges, csvData]);
 
             const importJSON = useCallback((e) => {
                 const file = e.target.files[0];
@@ -1202,6 +1286,7 @@
                         const data = JSON.parse(ev.target.result);
                         if (data.nodes) setNodes(data.nodes);
                         if (data.edges) setEdges(data.edges);
+                        if (data.csvData) setCsvData(data.csvData);
                         setSelectedNodeId(null);
                         setSelectedEdgeId(null);
                     } catch {
@@ -1210,6 +1295,31 @@
                 };
                 reader.readAsText(file);
                 e.target.value = '';
+            }, []);
+
+            const uploadCSV = useCallback((e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const parsed = parseCSV(ev.target.result);
+                        setCsvData({
+                            headers: parsed.headers,
+                            rows: parsed.rows,
+                            rawHeaders: parsed.rawHeaders,
+                            fileName: file.name,
+                        });
+                    } catch (err) {
+                        alert('Error parsing CSV file: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            }, []);
+
+            const clearCSV = useCallback(() => {
+                setCsvData(null);
             }, []);
 
             const clearAll = useCallback(() => {
@@ -1295,6 +1405,26 @@
                         <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
                         <button className="toolbar-btn" onClick={exportJSON}>Export</button>
                         <input ref={fileInputRef} type="file" accept=".json" className="hidden-input" onChange={importJSON} />
+                        <div className="toolbar-sep" />
+                        <button className="toolbar-btn" onClick={() => csvFileInputRef.current.click()}>
+                            {csvData ? (
+                                <>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    {csvData.fileName} ({csvData.rows.length} rows)
+                                </>
+                            ) : 'Upload CSV'}
+                        </button>
+                        {csvData && (
+                            <button className="toolbar-btn" onClick={clearCSV} title="Clear CSV">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        )}
+                        <input ref={csvFileInputRef} type="file" accept=".csv" className="hidden-input" onChange={uploadCSV} />
                         <div className="toolbar-sep" />
                         <div className="toolbar-zoom">
                             <button className="zoom-btn" onClick={zoomOut} title="Zoom out">&#8722;</button>
@@ -1424,6 +1554,7 @@
                                 {selectedNode && (
                                     <NodeEditor
                                         node={selectedNode}
+                                        csvData={csvData}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                     />
@@ -1469,7 +1600,18 @@
             const colorDef = NODE_COLORS[node.color || 0] || NODE_COLORS[0];
 
             const handleMouseDown = useCallback((e) => {
-                if (e.target.closest('.node-port')) return;
+                if (e.target.closest('.node-port')) {
+                    e.stopPropagation();
+                    return;
+                }
+
+                // If in connecting mode and this is not the source node, complete the connection
+                if (connecting && connecting.fromId !== node.id) {
+                    e.stopPropagation();
+                    onEndConnection();
+                    return;
+                }
+
                 e.stopPropagation();
                 onSelect();
 
@@ -1527,11 +1669,13 @@
                     </div>
                     <div
                         className={`node-port port-input${connecting ? ' connectable' : ''}`}
+                        onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => { e.stopPropagation(); if (connecting) onEndConnection(); }}
                         title="Input"
                     />
                     <div
                         className="node-port port-output"
+                        onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => { e.stopPropagation(); onStartConnection(); }}
                         title="Output — click to connect"
                     />
@@ -1542,7 +1686,7 @@
         // ========================
         // NodeEditor Component
         // ========================
-        function NodeEditor({ node, onUpdate, onDelete }) {
+        function NodeEditor({ node, csvData, onUpdate, onDelete }) {
             return (
                 <div>
                     <div className="panel-section">
@@ -1570,6 +1714,55 @@
                             ))}
                         </div>
                     </div>
+
+                    {csvData && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">CSV Data</div>
+                            <div className="panel-field">
+                                <label>Select CSV Row</label>
+                                <select
+                                    value={node.csvRowIndex !== undefined ? node.csvRowIndex : ''}
+                                    onChange={e => {
+                                        const rowIndex = e.target.value === '' ? undefined : parseInt(e.target.value);
+                                        if (rowIndex !== undefined) {
+                                            const row = csvData.rows[rowIndex];
+                                            const newMetrics = csvData.headers.map((key, i) => ({
+                                                key: key,
+                                                label: csvData.rawHeaders[i],
+                                                value: row[key] || '',
+                                            }));
+                                            onUpdate({ csvRowIndex: rowIndex, metrics: newMetrics });
+                                        } else {
+                                            onUpdate({ csvRowIndex: undefined });
+                                        }
+                                    }}
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                >
+                                    <option value="">-- Select a row --</option>
+                                    {csvData.rows.map((row, i) => {
+                                        const preview = csvData.headers.slice(0, 3).map(h => row[h]).filter(v => v).join(' | ') || `Row ${i + 1}`;
+                                        return <option key={i} value={i}>{preview}</option>;
+                                    })}
+                                </select>
+                            </div>
+                            {node.csvRowIndex !== undefined && (
+                                <button
+                                    className="add-btn"
+                                    onClick={() => {
+                                        const row = csvData.rows[node.csvRowIndex];
+                                        const newMetrics = csvData.headers.map((key, i) => ({
+                                            key: key,
+                                            label: csvData.rawHeaders[i],
+                                            value: row[key] || '',
+                                        }));
+                                        onUpdate({ metrics: newMetrics });
+                                    }}
+                                >
+                                    Re-sync from CSV
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     <div className="panel-section">
                         <div className="panel-section-title">Metrics</div>
