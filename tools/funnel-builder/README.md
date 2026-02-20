@@ -7,6 +7,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Add/Remove Nodes** — Double-click the canvas or use the toolbar button to create nodes. Each node has a label and any number of custom metrics (key, label, value).
 - **Duplicate Nodes** — Clone an existing node with all its properties (metrics, color, CSV configuration) using the "Duplicate Node" button in the properties panel or the `Ctrl+D` / `Cmd+D` keyboard shortcut.
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
+- **Multi-Source Derived Metrics** — Create metrics on a node that are computed from metrics of **any or all** upstream (source) nodes. Build true data pipelines where values flow through your funnel. A single expression can combine metrics from multiple source nodes (e.g., `facebook_ads.leads + google_ads.leads`).
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
 - **Edge Calculations** — Add custom formulas to connections. Expressions reference source and target metrics using `source.<key>` and `target.<key>` syntax. Results are displayed live on the connection label.
@@ -101,6 +102,132 @@ Email Campaign,800,0.50,5.5
 - **Manual Metrics**: You can still add manual metrics in the "Additional Metrics" section — they work alongside CSV metrics.
 - **Persistence**: CSV data, filters, and metric configurations are saved to localStorage and included in JSON exports.
 
+## Derived Metrics (Multi-Source Data Input)
+
+Derived Metrics allow you to create true data pipelines where metric values flow from upstream (source) nodes to downstream (target) nodes. Unlike edge calculations (which only display results on the connection), derived metrics become **first-class metrics on the target node** — available for display, downstream calculations, and further derivation.
+
+### How It Works
+
+When a node has incoming connections (edges), you can define **Derived Metrics** that compute values based on **any or all** connected source nodes' metrics. The computation follows topological order, so derived metrics can reference other derived metrics in a chain.
+
+### Creating a Derived Metric
+
+1. **Connect nodes**: Create edges from one or more source nodes to your target node.
+2. **Select the target node**: Click the target node to open the properties panel.
+3. **Add a Derived Metric**: In the "Derived Metrics" section (which appears when the node has incoming edges), click **"+ Add Derived Metric"**.
+4. **Configure the metric**:
+   - **Key**: A unique identifier for the metric (e.g., `total_leads`).
+   - **Label**: Display name (e.g., "Total Leads from All Sources").
+   - **Expression**: Formula referencing metrics from any connected source node using `<node_label>.<metric_key>` syntax.
+   - **Computed Value**: Shows the live result (read-only).
+
+### Expression Syntax
+
+Derived metric expressions reference source nodes using **sanitized versions of their labels**:
+
+| Syntax | Meaning |
+|--------|---------|
+| `facebook_ads.lead_count` | Metric `lead_count` from the source node labeled "Facebook Ads" |
+| `google_ads.revenue` | Metric `revenue` from the source node labeled "Google Ads" |
+| `source.lead_count` | **Shorthand** — only works when there's exactly **one** incoming source node |
+
+**Label Sanitization Rules:**
+- Node labels are converted to lowercase
+- Non-alphanumeric characters are replaced with underscores (`_`)
+- Multiple consecutive underscores are collapsed
+- Leading/trailing underscores are removed
+- Example: "Facebook Ads (2023)" → `facebook_ads_2023`
+
+**Label Collisions:**
+If two source nodes have the same label, they're automatically disambiguated with suffixes: `facebook_ads`, `facebook_ads_2`, etc.
+
+### Variable Hints
+
+When editing a derived metric, the properties panel shows **all available metrics** from **all connected source nodes**, grouped by node. The hints display the exact syntax to use in your expression (e.g., `facebook_ads.lead_count`).
+
+### Example 1: Single-Source Pipeline (using `source.` shorthand)
+
+```
+Node A (Manual Metric)
+├─ lead_count = 1000
+
+    ↓ [Edge A→B]
+
+Node B (Derived Metric from A)
+├─ converted = source.lead_count * 0.05 → 50
+
+    ↓ [Edge B→C]
+
+Node C (Derived Metric from B)
+├─ revenue = source.converted * 100 → 5000
+```
+
+In this example:
+- Node B uses the `source.` shorthand because it has only one incoming edge
+- Node C computes `revenue` from Node B's `converted` (which is itself derived)
+- All metrics are available for edge calculations and further derivations
+
+### Example 2: Multi-Source Aggregation
+
+```
+Facebook Ads (CSV Metrics)
+├─ lead_count = 3700
+├─ cost = 9250
+    ↓
+
+Google Ads (CSV Metrics)
+├─ lead_count = 2000
+├─ cost = 6000
+    ↓         ↓
+
+    Combined Funnel (Derived Metrics)
+    ├─ total_leads = facebook_ads.lead_count + google_ads.lead_count → 5700
+    ├─ total_cost = facebook_ads.cost + google_ads.cost → 15250
+    ├─ cost_per_lead = total_cost / total_leads → 2.68
+```
+
+In this example:
+- Node "Combined Funnel" receives edges from both "Facebook Ads" and "Google Ads"
+- The expression `facebook_ads.lead_count + google_ads.lead_count` references both source nodes
+- Internal derived metrics like `total_leads` can be referenced in subsequent derived metrics like `cost_per_lead`
+
+### Example 3: Complex Multi-Source Formula
+
+```
+Node A               Node B
+├─ revenue = 30000   ├─ cost = 15250
+    ↓                     ↓
+
+        Node C (Derived Metrics)
+        ├─ profit = node_a.revenue - node_b.cost → 14750
+        ├─ roi = (profit / node_b.cost) * 100 → 96.72
+```
+
+This demonstrates:
+- Referencing different metrics from different source nodes
+- Using derived metrics in subsequent derived metric expressions
+
+### Advanced Features
+
+- **Multi-Source Expressions**: A single derived metric expression can reference metrics from **any or all** connected upstream nodes.
+- **Mixed Metric Types**: Derived metrics, CSV metrics, and manual metrics all coexist on the same node.
+- **Cycle Detection**: If a circular dependency is detected (A → B → A), the tool prevents infinite loops and shows a warning.
+- **Disconnection Warnings**: If an edge is deleted and a derived metric still references the disconnected node, a warning badge appears showing which references are broken. The metric is not auto-deleted (you can reconnect it later or update the expression).
+- **Topological Computation**: Metrics are computed in dependency order automatically, so complex chains always resolve correctly.
+- **Backward Compatibility**: Old saved funnels using the previous single-source format are automatically migrated to the new multi-source syntax on load.
+
+### Important Notes
+
+- **Node Renaming**: If you rename a source node, derived metric expressions are **not** automatically updated. You'll need to manually update any expressions that reference the renamed node.
+- **Expression Validation**: If a referenced node label doesn't match any connected source, the expression evaluates that reference as `0`.
+
+### Use Cases
+
+- **Conversion Funnels**: Compute conversion rates at each stage based on the previous stage's output.
+- **Cost Attribution**: Calculate cost-per-acquisition by dividing costs from one node by conversions from another.
+- **Revenue Modeling**: Build multi-step revenue calculations that flow through your funnel.
+- **Dynamic Reporting**: Adjust metrics at the top of the funnel and watch all downstream values update automatically.
+
 ## Data Structure (JSON)
 
 ```json
@@ -114,6 +241,7 @@ Email Campaign,800,0.50,5.5
         { "key": "manual_metric", "label": "Manual Metric", "value": 100 }
       ],
       "color": 0,
+      "derivedMetrics": [],
       "csvConfig": {
         "filters": [
           { "column": "lead_source", "operator": "equals", "value": "Facebook Ads" }
@@ -123,6 +251,22 @@ Email Campaign,800,0.50,5.5
           { "column": "revenue", "aggregation": "SUM", "key": "total_revenue", "label": "Total Revenue" }
         ]
       }
+    },
+    {
+      "id": "node-2",
+      "label": "Converted Leads",
+      "position": { "x": 400, "y": 72 },
+      "metrics": [
+        { "key": "manual_metric", "label": "Manual Metric", "value": 50 }
+      ],
+      "color": 0,
+      "derivedMetrics": [
+        {
+          "key": "converted",
+          "label": "Converted Leads",
+          "expression": "facebook_ads_funnel.total_leads * 0.05"
+        }
+      ]
     }
   ],
   "edges": [

@@ -537,6 +537,16 @@
             border-color: #c3d9ff;
         }
 
+        .derived-metric-card {
+            background: #e8faf0;
+            border-color: #86d4a8;
+        }
+
+        .derived-metric-card.disconnected {
+            border-color: #f9a825;
+            border-width: 2px;
+        }
+
         .metric-card-header {
             display: flex;
             align-items: center;
@@ -922,6 +932,55 @@
             return Math.round(val / GRID_SIZE) * GRID_SIZE;
         }
 
+        // Sanitize a node label to create a valid identifier for expressions
+        function sanitizeLabel(label) {
+            if (!label) return 'node';
+            return label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'node';
+        }
+
+        // Build a map of source node references for a given node
+        // Returns { sanitizedLabel: nodeObject, ... } plus 'source' alias if there's exactly one source
+        function buildSourceRefMap(nodeId, edges, resolvedNodesMap) {
+            const refMap = {};
+            const labelCounts = {};
+
+            // Find all incoming edges
+            const incomingEdges = edges.filter(edge => edge.to === nodeId);
+
+            // First pass: sanitize labels and track duplicates
+            const sourceNodes = incomingEdges.map(edge => {
+                const sourceNode = resolvedNodesMap[edge.from];
+                if (!sourceNode) return null;
+
+                const sanitized = sanitizeLabel(sourceNode.label);
+                labelCounts[sanitized] = (labelCounts[sanitized] || 0) + 1;
+
+                return { sourceNode, sanitized };
+            }).filter(Boolean);
+
+            // Second pass: build map with disambiguation
+            const usedLabels = {};
+            sourceNodes.forEach(({ sourceNode, sanitized }) => {
+                let finalLabel = sanitized;
+
+                // If duplicate, add suffix
+                if (labelCounts[sanitized] > 1) {
+                    const count = (usedLabels[sanitized] || 0) + 1;
+                    usedLabels[sanitized] = count;
+                    finalLabel = count === 1 ? sanitized : `${sanitized}_${count}`;
+                }
+
+                refMap[finalLabel] = sourceNode;
+            });
+
+            // Add 'source' alias if there's exactly one source node
+            if (sourceNodes.length === 1) {
+                refMap['source'] = sourceNodes[0].sourceNode;
+            }
+
+            return refMap;
+        }
+
         // Safe math expression evaluator (recursive descent parser — no eval)
         function safeEvaluate(expr) {
             const tokens = [];
@@ -999,6 +1058,89 @@
             if (isNaN(n) || !isFinite(n)) return '—';
             if (Number.isInteger(n)) return n.toLocaleString();
             return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+
+        // Topological sort for computing derived metrics in dependency order
+        function topologicalSort(nodes, edges) {
+            const nodeIds = nodes.map(n => n.id);
+            const inDegree = {};
+            const adjList = {};
+
+            // Initialize
+            nodeIds.forEach(id => {
+                inDegree[id] = 0;
+                adjList[id] = [];
+            });
+
+            // Build adjacency list and in-degree count
+            edges.forEach(edge => {
+                if (nodeIds.includes(edge.from) && nodeIds.includes(edge.to)) {
+                    adjList[edge.from].push(edge.to);
+                    inDegree[edge.to]++;
+                }
+            });
+
+            // Kahn's algorithm
+            const queue = [];
+            const sorted = [];
+            const cyclic = new Set();
+
+            // Start with nodes that have no incoming edges
+            nodeIds.forEach(id => {
+                if (inDegree[id] === 0) {
+                    queue.push(id);
+                }
+            });
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+                sorted.push(current);
+
+                adjList[current].forEach(neighbor => {
+                    inDegree[neighbor]--;
+                    if (inDegree[neighbor] === 0) {
+                        queue.push(neighbor);
+                    }
+                });
+            }
+
+            // Detect cycles: any node with in-degree > 0 is part of a cycle
+            nodeIds.forEach(id => {
+                if (inDegree[id] > 0) {
+                    cyclic.add(id);
+                }
+            });
+
+            return { sorted, cyclic };
+        }
+
+        // Compute derived metrics for a node using resolved source nodes
+        function computeDerivedMetrics(node, edges, resolvedNodesMap) {
+            if (!node.derivedMetrics || node.derivedMetrics.length === 0) {
+                return [];
+            }
+
+            // Build source reference map for this node
+            const sourceRefMap = buildSourceRefMap(node.id, edges, resolvedNodesMap);
+
+            return node.derivedMetrics.map(dm => {
+                // Resolve the expression using ALL source nodes' metrics
+                let resolved = dm.expression || '';
+
+                // Replace <identifier>.<key> patterns with metric values
+                resolved = resolved.replace(/(\w+)\.(\w+)/g, (match, identifier, key) => {
+                    const sourceNode = sourceRefMap[identifier];
+                    if (!sourceNode) {
+                        return '0'; // Identifier not found in sources
+                    }
+
+                    const metric = sourceNode.metrics.find(m => m.key === key);
+                    return metric ? String(Number(metric.value) || 0) : '0';
+                });
+
+                const result = safeEvaluate(resolved);
+                return { key: dm.key, label: dm.label, value: result };
+            });
         }
 
         // CSV Parser - handles quoted fields, treats first row as headers
@@ -1213,14 +1355,43 @@
                         // Migrate old csvRowIndex format to new csvConfig format
                         if (data.nodes) {
                             const migratedNodes = data.nodes.map(node => {
+                                let migratedNode = { ...node };
+
+                                // Migrate csvRowIndex (old format)
                                 if (node.csvRowIndex !== undefined && !node.csvConfig) {
-                                    // Old format - convert to new format
-                                    // Since we don't have aggregation info, we'll just remove csvRowIndex
-                                    // and let the user reconfigure with the new system
-                                    const { csvRowIndex, ...rest } = node;
-                                    return { ...rest, csvConfig: null };
+                                    const { csvRowIndex, ...rest } = migratedNode;
+                                    migratedNode = { ...rest, csvConfig: null };
                                 }
-                                return node;
+
+                                // Ensure derivedMetrics exists
+                                if (!migratedNode.derivedMetrics) {
+                                    migratedNode.derivedMetrics = [];
+                                }
+
+                                // Migrate old sourceNodeId format to new multi-source syntax
+                                if (migratedNode.derivedMetrics && migratedNode.derivedMetrics.length > 0) {
+                                    migratedNode.derivedMetrics = migratedNode.derivedMetrics.map(dm => {
+                                        if (dm.sourceNodeId) {
+                                            // Find the source node to get its label
+                                            const sourceNode = data.nodes.find(n => n.id === dm.sourceNodeId);
+                                            if (sourceNode) {
+                                                const sanitized = sanitizeLabel(sourceNode.label);
+                                                // Replace 'source.' with '<sanitized_label>.'
+                                                const migratedExpression = (dm.expression || '').replace(/source\.(\w+)/g, `${sanitized}.$1`);
+
+                                                // Remove sourceNodeId field
+                                                const { sourceNodeId, ...rest } = dm;
+                                                return { ...rest, expression: migratedExpression };
+                                            }
+                                            // If source node not found, keep as is but remove sourceNodeId
+                                            const { sourceNodeId, ...rest } = dm;
+                                            return rest;
+                                        }
+                                        return dm;
+                                    });
+                                }
+
+                                return migratedNode;
                             });
                             setNodes(migratedNodes);
                         }
@@ -1277,8 +1448,9 @@
                     id: genId('node'),
                     label: 'New Node',
                     position: { x: snapToGrid(x), y: snapToGrid(y) },
-                    metrics: [{ key: 'count', label: 'Count', value: 0 }],
+                    metrics: [],
                     color: 0,
+                    derivedMetrics: [],
                 };
                 setNodes(prev => [...prev, node]);
                 setSelectedNodeId(node.id);
@@ -1307,6 +1479,7 @@
                     },
                     metrics: source.metrics.map(m => ({ ...m })),
                     color: source.color,
+                    derivedMetrics: (source.derivedMetrics || []).map(dm => ({ ...dm })),
                     ...(source.csvConfig ? {
                         csvConfig: {
                             filters: (source.csvConfig.filters || []).map(f => ({ ...f })),
@@ -1554,17 +1727,49 @@
 
             // ---- Compute effective metrics for nodes with CSV config ----
             const nodesWithComputedMetrics = useMemo(() => {
-                return nodes.map(node => {
-                    // If node has csvConfig with metrics, compute them
+                // Step 1: Compute CSV metrics for all nodes (existing logic)
+                const nodesWithCSV = nodes.map(node => {
                     if (csvData && node.csvConfig && node.csvConfig.metrics && node.csvConfig.metrics.length > 0) {
                         const csvMetrics = computeNodeMetrics(csvData, node.csvConfig);
-                        // Combine CSV metrics with manual metrics
                         return { ...node, metrics: [...csvMetrics, ...(node.metrics || [])] };
                     }
-                    // Otherwise use manual metrics as-is
                     return node;
                 });
-            }, [nodes, csvData]);
+
+                // Step 2: Topologically sort nodes for derived metrics computation
+                const { sorted, cyclic } = topologicalSort(nodesWithCSV, edges);
+
+                // Step 3: Compute derived metrics in topological order
+                const resolvedNodesMap = {};
+
+                sorted.forEach(nodeId => {
+                    const node = nodesWithCSV.find(n => n.id === nodeId);
+                    if (!node) return;
+
+                    // Compute derived metrics using already-resolved source nodes
+                    const derivedMetrics = computeDerivedMetrics(node, edges, resolvedNodesMap);
+
+                    // Merge: CSV metrics + derived metrics + manual metrics
+                    const finalMetrics = [
+                        ...(node.metrics || []),
+                        ...derivedMetrics
+                    ];
+
+                    // Store fully-resolved node
+                    resolvedNodesMap[nodeId] = { ...node, metrics: finalMetrics };
+                });
+
+                // Handle cyclic nodes (if any) - they get no derived metrics
+                cyclic.forEach(nodeId => {
+                    const node = nodesWithCSV.find(n => n.id === nodeId);
+                    if (node && !resolvedNodesMap[nodeId]) {
+                        resolvedNodesMap[nodeId] = { ...node };
+                    }
+                });
+
+                // Return nodes in original order
+                return nodesWithCSV.map(node => resolvedNodesMap[node.id] || node);
+            }, [nodes, csvData, edges]);
 
             const nodesByIdWithMetrics = useMemo(() => {
                 const map = {};
@@ -1751,6 +1956,8 @@
                                     <NodeEditor
                                         node={selectedNode}
                                         csvData={csvData}
+                                        edges={edges}
+                                        allNodes={nodesByIdWithMetrics}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
@@ -1883,8 +2090,9 @@
         // ========================
         // NodeEditor Component
         // ========================
-        function NodeEditor({ node, csvData, onUpdate, onDelete, onDuplicate }) {
+        function NodeEditor({ node, csvData, edges, allNodes, onUpdate, onDelete, onDuplicate }) {
             const csvConfig = node.csvConfig || { filters: [], metrics: [] };
+            const derivedMetrics = node.derivedMetrics || [];
 
             // Helper to get distinct values for a column
             const getDistinctValues = (column) => {
@@ -1898,6 +2106,12 @@
                 if (!csvData) return 0;
                 return applyFilters(csvData.rows, csvConfig.filters || []).length;
             };
+
+            // Get incoming source nodes
+            const incomingSourceNodes = edges
+                .filter(e => e.to === node.id)
+                .map(e => allNodes[e.from])
+                .filter(n => n);
 
             return (
                 <div>
@@ -2113,6 +2327,180 @@
                                 const metrics = [...(csvConfig.metrics || []), { column: '', aggregation: 'SUM', key: '', label: '' }];
                                 onUpdate({ csvConfig: { ...csvConfig, metrics } });
                             }}>+ Add CSV Metric</button>
+                        </div>
+                    )}
+
+                    {/* Derived Metrics Section */}
+                    {(incomingSourceNodes.length > 0 || derivedMetrics.length > 0) && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Derived Metrics</div>
+                            {derivedMetrics.map((dm, i) => {
+                                // Build source ref map for computing current value
+                                const sourceRefMap = {};
+                                const labelCounts = {};
+
+                                // First pass: count labels
+                                incomingSourceNodes.forEach(sourceNode => {
+                                    const sanitized = sanitizeLabel(sourceNode.label);
+                                    labelCounts[sanitized] = (labelCounts[sanitized] || 0) + 1;
+                                });
+
+                                // Second pass: build map with disambiguation
+                                const usedLabels = {};
+                                incomingSourceNodes.forEach(sourceNode => {
+                                    const sanitized = sanitizeLabel(sourceNode.label);
+                                    let finalLabel = sanitized;
+
+                                    if (labelCounts[sanitized] > 1) {
+                                        const count = (usedLabels[sanitized] || 0) + 1;
+                                        usedLabels[sanitized] = count;
+                                        finalLabel = count === 1 ? sanitized : `${sanitized}_${count}`;
+                                    }
+
+                                    sourceRefMap[finalLabel] = sourceNode;
+                                });
+
+                                // Add 'source' alias if exactly one source
+                                if (incomingSourceNodes.length === 1) {
+                                    sourceRefMap['source'] = incomingSourceNodes[0];
+                                }
+
+                                // Detect if any referenced identifiers are disconnected
+                                const referencedIdentifiers = [];
+                                const expressionPattern = /(\w+)\.(\w+)/g;
+                                let match;
+                                const expr = dm.expression || '';
+                                while ((match = expressionPattern.exec(expr)) !== null) {
+                                    const identifier = match[1];
+                                    if (!referencedIdentifiers.includes(identifier)) {
+                                        referencedIdentifiers.push(identifier);
+                                    }
+                                }
+
+                                const disconnectedRefs = referencedIdentifiers.filter(id => !sourceRefMap[id]);
+                                const isDisconnected = disconnectedRefs.length > 0;
+
+                                // Compute the current value
+                                let computedValue = 0;
+                                if (incomingSourceNodes.length > 0) {
+                                    let resolved = dm.expression || '';
+                                    resolved = resolved.replace(/(\w+)\.(\w+)/g, (match, identifier, key) => {
+                                        const sourceNode = sourceRefMap[identifier];
+                                        if (!sourceNode) return '0';
+
+                                        const m = sourceNode.metrics.find(m => m.key === key);
+                                        return m ? String(Number(m.value) || 0) : '0';
+                                    });
+                                    computedValue = safeEvaluate(resolved);
+                                }
+
+                                return (
+                                    <div key={i} className={`metric-card derived-metric-card${isDisconnected ? ' disconnected' : ''}`}>
+                                        <div className="metric-card-header">
+                                            <span className="metric-card-title">Derived Metric {i + 1}</span>
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const newDerived = [...derivedMetrics];
+                                                newDerived.splice(i, 1);
+                                                onUpdate({ derivedMetrics: newDerived });
+                                            }}>&times;</button>
+                                        </div>
+                                        {isDisconnected && (
+                                            <div style={{ fontSize: '11px', color: '#e63946', marginBottom: '8px', padding: '4px 8px', background: '#fff0f0', borderRadius: '6px' }}>
+                                                ⚠ Referenced node(s) disconnected: {disconnectedRefs.join(', ')}
+                                            </div>
+                                        )}
+                                        {incomingSourceNodes.length === 0 && (
+                                            <div style={{ fontSize: '11px', color: '#e63946', marginBottom: '8px', padding: '4px 8px', background: '#fff0f0', borderRadius: '6px' }}>
+                                                ⚠ No source nodes connected
+                                            </div>
+                                        )}
+                                        {incomingSourceNodes.length > 0 && (
+                                            <div className="var-hint" style={{ marginBottom: '8px', maxHeight: '120px', overflowY: 'auto' }}>
+                                                <strong>Available metrics:</strong><br />
+                                                {incomingSourceNodes.map((sourceNode, si) => {
+                                                    const sanitized = sanitizeLabel(sourceNode.label);
+                                                    const finalLabel = sourceRefMap[sanitized] === sourceNode
+                                                        ? sanitized
+                                                        : Object.keys(sourceRefMap).find(k => sourceRefMap[k] === sourceNode);
+
+                                                    return (
+                                                        <div key={si} style={{ marginTop: si > 0 ? '6px' : '0' }}>
+                                                            <em style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                                                {sourceNode.label}:
+                                                            </em><br />
+                                                            {sourceNode.metrics.length > 0
+                                                                ? sourceNode.metrics.map((m, mi) => (
+                                                                    <span key={mi}>
+                                                                        <code>{finalLabel}.{m.key || '?'}</code>
+                                                                        {mi < sourceNode.metrics.length - 1 ? ', ' : ''}
+                                                                    </span>
+                                                                ))
+                                                                : <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No metrics</span>
+                                                            }
+                                                        </div>
+                                                    );
+                                                })}
+                                                {incomingSourceNodes.length === 1 && (
+                                                    <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)' }}>
+                                                        <em>Tip: Use <code>source.&lt;key&gt;</code> as shorthand</em>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        <div className="panel-field">
+                                            <label>Key (for expressions)</label>
+                                            <input
+                                                value={dm.key || ''}
+                                                onChange={e => {
+                                                    const newDerived = [...derivedMetrics];
+                                                    newDerived[i] = { ...dm, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() };
+                                                    onUpdate({ derivedMetrics: newDerived });
+                                                }}
+                                                placeholder="e.g. converted"
+                                            />
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Display Label</label>
+                                            <input
+                                                value={dm.label || ''}
+                                                onChange={e => {
+                                                    const newDerived = [...derivedMetrics];
+                                                    newDerived[i] = { ...dm, label: e.target.value };
+                                                    onUpdate({ derivedMetrics: newDerived });
+                                                }}
+                                                placeholder="e.g. Converted Leads"
+                                            />
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Expression</label>
+                                            <textarea
+                                                value={dm.expression || ''}
+                                                onChange={e => {
+                                                    const newDerived = [...derivedMetrics];
+                                                    newDerived[i] = { ...dm, expression: e.target.value };
+                                                    onUpdate({ derivedMetrics: newDerived });
+                                                }}
+                                                placeholder={incomingSourceNodes.length > 1
+                                                    ? "e.g. facebook_ads.lead_count + google_ads.lead_count"
+                                                    : "e.g. source.lead_count * 0.05"}
+                                                style={{ minHeight: '60px' }}
+                                            />
+                                        </div>
+                                        <div className="panel-field">
+                                            <label>Computed Value</label>
+                                            <input
+                                                value={formatNumber(computedValue)}
+                                                readOnly
+                                                style={{ background: '#f0f0f0', fontWeight: 600, color: 'var(--primary)' }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <button className="add-btn" onClick={() => {
+                                const newDerived = [...derivedMetrics, { key: '', label: '', expression: '' }];
+                                onUpdate({ derivedMetrics: newDerived });
+                            }}>+ Add Derived Metric</button>
                         </div>
                     )}
 
