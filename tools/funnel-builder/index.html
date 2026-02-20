@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Funnel Builder — Marketing Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #f5f5f7;
+            --grid-dot: #d1d1d6;
+            --node-bg: #ffffff;
+            --node-border: #ddd;
+            --node-border-selected: #4361ee;
+            --node-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --node-shadow-selected: 0 2px 12px rgba(67, 97, 238, 0.25);
+            --text-primary: #1a1a2e;
+            --text-secondary: #555;
+            --text-muted: #999;
+            --primary: #4361ee;
+            --primary-light: #eef0ff;
+            --primary-hover: #3651d4;
+            --danger: #e63946;
+            --danger-hover: #c5303c;
+            --panel-bg: #fff;
+            --panel-border: #e8e8e8;
+            --toolbar-bg: rgba(255, 255, 255, 0.95);
+            --toolbar-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            --input-bg: #f5f5f7;
+            --input-border: #ddd;
+            --input-focus: #4361ee;
+            --edge-color: #999;
+            --edge-selected: #4361ee;
+            --port-color: #bbb;
+            --port-hover: #4361ee;
+        }
+
+        html,
+        body,
+        #root {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: var(--text-primary);
+            background: var(--bg);
+        }
+
+        .app {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* === Toolbar === */
+        .toolbar {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: var(--toolbar-bg);
+            backdrop-filter: blur(12px);
+            border-radius: 12px;
+            box-shadow: var(--toolbar-shadow);
+            border: 1px solid var(--panel-border);
+        }
+
+        .toolbar-back {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            transition: background 0.15s;
+        }
+
+        .toolbar-back:hover {
+            background: var(--input-bg);
+        }
+
+        .toolbar-title {
+            font-weight: 600;
+            font-size: 14px;
+            padding: 0 8px;
+            white-space: nowrap;
+        }
+
+        .toolbar-sep {
+            width: 1px;
+            height: 24px;
+            background: var(--panel-border);
+            margin: 0 4px;
+        }
+
+        .toolbar-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .toolbar-btn:hover {
+            background: var(--input-bg);
+            border-color: #ccc;
+        }
+
+        .toolbar-btn.primary {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        .toolbar-btn.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .toolbar-btn.danger {
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+
+        .toolbar-btn.danger:hover {
+            background: #fff0f0;
+        }
+
+        .toolbar-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .toolbar-zoom {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .zoom-btn {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+        }
+
+        .zoom-btn:hover {
+            background: var(--input-bg);
+        }
+
+        .zoom-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            min-width: 40px;
+            text-align: center;
+        }
+
+        /* === Canvas === */
+        .canvas-viewport {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+
+        .canvas-viewport.panning {
+            cursor: grabbing;
+        }
+
+        .canvas-viewport.connecting {
+            cursor: crosshair;
+        }
+
+        .canvas-transform {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+        }
+
+        .edges-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1px;
+            height: 1px;
+            overflow: visible;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .edge-path {
+            fill: none;
+            stroke: var(--edge-color);
+            stroke-width: 2;
+            pointer-events: stroke;
+            cursor: pointer;
+        }
+
+        .edge-path:hover {
+            stroke: var(--primary);
+            stroke-width: 3;
+        }
+
+        .edge-path.selected {
+            stroke: var(--edge-selected);
+            stroke-width: 2.5;
+        }
+
+        .temp-edge {
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 2;
+            stroke-dasharray: 6 4;
+            pointer-events: none;
+        }
+
+        /* === Nodes === */
+        .funnel-node {
+            position: absolute;
+            width: 200px;
+            background: var(--node-bg);
+            border: 2px solid var(--node-border);
+            border-radius: 12px;
+            box-shadow: var(--node-shadow);
+            cursor: grab;
+            user-select: none;
+            z-index: 2;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .funnel-node:hover {
+            border-color: #ccc;
+        }
+
+        .funnel-node.selected {
+            border-color: var(--node-border-selected);
+            box-shadow: var(--node-shadow-selected);
+        }
+
+        .funnel-node.dragging {
+            cursor: grabbing;
+            z-index: 10;
+            opacity: 0.92;
+        }
+
+        .node-header {
+            padding: 10px 14px 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-primary);
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .node-metrics {
+            padding: 8px 14px 10px;
+        }
+
+        .node-metric {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 2px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .node-metric-label {
+            color: var(--text-muted);
+        }
+
+        .node-metric-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .node-no-metrics {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 4px 0;
+        }
+
+        /* Ports */
+        .node-port {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid var(--port-color);
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: crosshair;
+            z-index: 5;
+            transition: all 0.15s;
+        }
+
+        .node-port:hover {
+            border-color: var(--port-hover);
+            background: var(--primary-light);
+            transform: translateY(-50%) scale(1.3);
+        }
+
+        .node-port.port-input {
+            left: -7px;
+        }
+
+        .node-port.port-output {
+            right: -7px;
+        }
+
+        .node-port.connectable {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            animation: pulse-port 1s infinite;
+        }
+
+        @keyframes pulse-port {
+
+            0%,
+            100% {
+                transform: translateY(-50%) scale(1);
+            }
+
+            50% {
+                transform: translateY(-50%) scale(1.4);
+            }
+        }
+
+        /* === Edge Labels === */
+        .edge-label-container {
+            position: absolute;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .edge-label {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .edge-label.selected {
+            border-color: var(--primary);
+        }
+
+        .edge-label-row {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .edge-label-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* === Properties Panel === */
+        .panel-overlay {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 340px;
+            height: 100%;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--panel-border);
+            box-shadow: -4px 0 16px rgba(0, 0, 0, 0.06);
+            z-index: 200;
+            overflow-y: auto;
+            animation: slideIn 0.2s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+            }
+
+            to {
+                transform: translateX(0);
+            }
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--panel-border);
+            position: sticky;
+            top: 0;
+            background: var(--panel-bg);
+            z-index: 1;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .panel-close {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 18px;
+            transition: background 0.15s;
+        }
+
+        .panel-close:hover {
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+
+        .panel-body {
+            padding: 20px;
+        }
+
+        .panel-section {
+            margin-bottom: 20px;
+        }
+
+        .panel-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .panel-field {
+            margin-bottom: 12px;
+        }
+
+        .panel-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .panel-field input,
+        .panel-field textarea {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 13px;
+            font-family: inherit;
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .panel-field input:focus,
+        .panel-field textarea:focus {
+            border-color: var(--input-focus);
+            background: #fff;
+        }
+
+        .panel-field textarea {
+            resize: vertical;
+            min-height: 60px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+        }
+
+        .metric-card {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+
+        .metric-card .panel-field {
+            margin-bottom: 8px;
+        }
+
+        .metric-card .panel-field:last-child {
+            margin-bottom: 0;
+        }
+
+        .metric-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .metric-card-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .metric-delete-btn {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 14px;
+            transition: all 0.15s;
+        }
+
+        .metric-delete-btn:hover {
+            background: #fee;
+            color: var(--danger);
+        }
+
+        .add-btn {
+            width: 100%;
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+            border: 1px dashed var(--input-border);
+            border-radius: 8px;
+            background: none;
+            color: var(--primary);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .add-btn:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+        }
+
+        .delete-section {
+            padding-top: 16px;
+            border-top: 1px solid var(--panel-border);
+        }
+
+        .delete-btn {
+            width: 100%;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: inherit;
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+            background: none;
+            color: var(--danger);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .delete-btn:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .edge-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 8px 10px;
+            background: var(--input-bg);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .edge-info span {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .var-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            background: var(--input-bg);
+            border-radius: 8px;
+            padding: 8px 10px;
+            line-height: 1.6;
+        }
+
+        .var-hint code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            background: #e8e8ec;
+            padding: 1px 4px;
+            border-radius: 3px;
+            color: var(--primary);
+        }
+
+        .calc-result {
+            font-size: 12px;
+            padding: 4px 0;
+            color: var(--text-muted);
+        }
+
+        .calc-result strong {
+            color: var(--primary);
+        }
+
+        /* === Node Color Picker === */
+        .color-picker {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .color-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.15);
+        }
+
+        .color-swatch.active {
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 2px var(--primary-light);
+        }
+
+        /* === Empty State === */
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .empty-state h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .empty-state .hint {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 6px 12px;
+            font-size: 12px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        /* === Confirm Modal === */
+        .confirm-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .confirm-modal {
+            background: #fff;
+            border-radius: 16px;
+            padding: 24px;
+            width: 360px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        }
+
+        .confirm-modal h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .confirm-modal p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .confirm-actions button {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .confirm-cancel {
+            border: 1px solid var(--input-border);
+            background: #fff;
+            color: var(--text-primary);
+        }
+
+        .confirm-cancel:hover {
+            background: var(--input-bg);
+        }
+
+        .confirm-danger {
+            border: 1px solid var(--danger);
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .confirm-danger:hover {
+            background: var(--danger-hover);
+        }
+
+        /* Privacy badge */
+        .privacy-badge {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            z-index: 50;
+            font-size: 11px;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .hidden-input {
+            display: none;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .toolbar {
+                top: 8px;
+                padding: 6px 8px;
+                gap: 4px;
+                max-width: calc(100vw - 16px);
+                overflow-x: auto;
+            }
+
+            .toolbar-title {
+                font-size: 12px;
+                padding: 0 4px;
+            }
+
+            .toolbar-btn {
+                padding: 5px 8px;
+                font-size: 12px;
+            }
+
+            .panel-overlay {
+                width: 100%;
+                max-width: 340px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useCallback, useEffect, useRef, useMemo } = React;
+
+        // ========================
+        // Constants
+        // ========================
+        const NODE_WIDTH = 200;
+        const NODE_HEADER_H = 36;
+        const NODE_METRIC_H = 24;
+        const NODE_PADDING_Y = 20;
+        const GRID_SIZE = 24;
+        const STORAGE_KEY = 'funnel-builder-data';
+
+        const NODE_COLORS = [
+            { name: 'Default', bg: '#ffffff', border: '#ddd' },
+            { name: 'Blue', bg: '#dbeafe', border: '#93c5fd' },
+            { name: 'Green', bg: '#dcfce7', border: '#86efac' },
+            { name: 'Yellow', bg: '#fef9c3', border: '#fde047' },
+            { name: 'Red', bg: '#fee2e2', border: '#fca5a5' },
+            { name: 'Purple', bg: '#f3e8ff', border: '#d8b4fe' },
+        ];
+
+        // ========================
+        // Utilities
+        // ========================
+        let idCounter = 0;
+        function genId(prefix = 'id') {
+            return `${prefix}-${Date.now()}-${++idCounter}`;
+        }
+
+        function getNodeHeight(node) {
+            const metricsCount = Math.max(node.metrics.length, 1);
+            return NODE_PADDING_Y + NODE_HEADER_H + metricsCount * NODE_METRIC_H;
+        }
+
+        function getOutputPort(node) {
+            const h = getNodeHeight(node);
+            return { x: node.position.x + NODE_WIDTH, y: node.position.y + h / 2 };
+        }
+
+        function getInputPort(node) {
+            const h = getNodeHeight(node);
+            return { x: node.position.x, y: node.position.y + h / 2 };
+        }
+
+        function getBezierPath(src, tgt) {
+            const dx = Math.max(Math.abs(tgt.x - src.x) * 0.5, 60);
+            return `M ${src.x} ${src.y} C ${src.x + dx} ${src.y}, ${tgt.x - dx} ${tgt.y}, ${tgt.x} ${tgt.y}`;
+        }
+
+        function bezierMidpoint(src, tgt) {
+            const dx = Math.max(Math.abs(tgt.x - src.x) * 0.5, 60);
+            const t = 0.5;
+            const u = 1 - t;
+            const p0 = src, p1 = { x: src.x + dx, y: src.y }, p2 = { x: tgt.x - dx, y: tgt.y }, p3 = tgt;
+            return {
+                x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+                y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+            };
+        }
+
+        function snapToGrid(val) {
+            return Math.round(val / GRID_SIZE) * GRID_SIZE;
+        }
+
+        // Safe math expression evaluator (recursive descent parser — no eval)
+        function safeEvaluate(expr) {
+            const tokens = [];
+            let i = 0;
+            const s = expr.trim();
+            while (i < s.length) {
+                if (/\s/.test(s[i])) { i++; continue; }
+                if (/[\d.]/.test(s[i])) {
+                    let num = '';
+                    while (i < s.length && /[\d.]/.test(s[i])) num += s[i++];
+                    tokens.push({ type: 'num', value: parseFloat(num) });
+                } else if ('+-*/()'.includes(s[i])) {
+                    tokens.push({ type: 'op', value: s[i++] });
+                } else {
+                    return NaN;
+                }
+            }
+            let pos = 0;
+            function peek() { return pos < tokens.length ? tokens[pos] : null; }
+            function consume() { return tokens[pos++]; }
+            function parseExpr() {
+                let left = parseTerm();
+                while (peek() && (peek().value === '+' || peek().value === '-')) {
+                    const op = consume().value;
+                    const right = parseTerm();
+                    left = op === '+' ? left + right : left - right;
+                }
+                return left;
+            }
+            function parseTerm() {
+                let left = parseUnary();
+                while (peek() && (peek().value === '*' || peek().value === '/')) {
+                    const op = consume().value;
+                    const right = parseUnary();
+                    left = op === '*' ? left * right : left / right;
+                }
+                return left;
+            }
+            function parseUnary() {
+                if (peek() && peek().value === '-') { consume(); return -parseFactor(); }
+                if (peek() && peek().value === '+') { consume(); return parseFactor(); }
+                return parseFactor();
+            }
+            function parseFactor() {
+                if (peek() && peek().value === '(') {
+                    consume();
+                    const val = parseExpr();
+                    if (peek() && peek().value === ')') consume();
+                    return val;
+                }
+                if (peek() && peek().type === 'num') return consume().value;
+                return NaN;
+            }
+            try {
+                const result = parseExpr();
+                if (pos !== tokens.length) return NaN;
+                return result;
+            } catch { return NaN; }
+        }
+
+        function resolveExpression(expression, sourceNode, targetNode) {
+            let resolved = expression || '';
+            resolved = resolved.replace(/source\.(\w+)/g, (_, key) => {
+                const m = sourceNode.metrics.find(m => m.key === key);
+                return m ? String(Number(m.value) || 0) : '0';
+            });
+            resolved = resolved.replace(/target\.(\w+)/g, (_, key) => {
+                const m = targetNode.metrics.find(m => m.key === key);
+                return m ? String(Number(m.value) || 0) : '0';
+            });
+            return safeEvaluate(resolved);
+        }
+
+        function formatNumber(n) {
+            if (isNaN(n) || !isFinite(n)) return '—';
+            if (Number.isInteger(n)) return n.toLocaleString();
+            return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+
+        // ========================
+        // App Component
+        // ========================
+        function App() {
+            const [nodes, setNodes] = useState([]);
+            const [edges, setEdges] = useState([]);
+            const [selectedNodeId, setSelectedNodeId] = useState(null);
+            const [selectedEdgeId, setSelectedEdgeId] = useState(null);
+            const [connecting, setConnecting] = useState(null);
+            const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+            const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+            const [isPanning, setIsPanning] = useState(false);
+            const [confirmAction, setConfirmAction] = useState(null);
+            const viewportRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const panActiveRef = useRef(false);
+            const initialLoadRef = useRef(false);
+
+            // Load from localStorage on mount
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        if (data.nodes) setNodes(data.nodes);
+                        if (data.edges) setEdges(data.edges);
+                    }
+                } catch { }
+                initialLoadRef.current = true;
+            }, []);
+
+            // Auto-save to localStorage
+            useEffect(() => {
+                if (!initialLoadRef.current) return;
+                const t = setTimeout(() => {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+                }, 300);
+                return () => clearTimeout(t);
+            }, [nodes, edges]);
+
+            // Keyboard shortcuts
+            useEffect(() => {
+                function handleKey(e) {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                    if (e.key === 'Escape') {
+                        setConnecting(null);
+                        setSelectedNodeId(null);
+                        setSelectedEdgeId(null);
+                    }
+                    if (e.key === 'Delete' || e.key === 'Backspace') {
+                        if (selectedNodeId) {
+                            setNodes(prev => prev.filter(n => n.id !== selectedNodeId));
+                            setEdges(prev => prev.filter(e => e.from !== selectedNodeId && e.to !== selectedNodeId));
+                            setSelectedNodeId(null);
+                        } else if (selectedEdgeId) {
+                            setEdges(prev => prev.filter(e => e.id !== selectedEdgeId));
+                            setSelectedEdgeId(null);
+                        }
+                    }
+                }
+                window.addEventListener('keydown', handleKey);
+                return () => window.removeEventListener('keydown', handleKey);
+            }, [selectedNodeId, selectedEdgeId]);
+
+            // ---- Node CRUD ----
+            const addNode = useCallback((x, y) => {
+                const node = {
+                    id: genId('node'),
+                    label: 'New Node',
+                    position: { x: snapToGrid(x), y: snapToGrid(y) },
+                    metrics: [{ key: 'count', label: 'Count', value: 0 }],
+                    color: 0,
+                };
+                setNodes(prev => [...prev, node]);
+                setSelectedNodeId(node.id);
+                setSelectedEdgeId(null);
+            }, []);
+
+            const updateNode = useCallback((id, updates) => {
+                setNodes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+            }, []);
+
+            const deleteNode = useCallback((id) => {
+                setNodes(prev => prev.filter(n => n.id !== id));
+                setEdges(prev => prev.filter(e => e.from !== id && e.to !== id));
+                setSelectedNodeId(prev => prev === id ? null : prev);
+            }, []);
+
+            // ---- Edge CRUD ----
+            const addEdge = useCallback((fromId, toId) => {
+                if (fromId === toId) return;
+                setEdges(prev => {
+                    if (prev.some(e => e.from === fromId && e.to === toId)) return prev;
+                    const edge = {
+                        id: genId('edge'),
+                        from: fromId,
+                        to: toId,
+                        calculations: [],
+                    };
+                    setSelectedEdgeId(edge.id);
+                    setSelectedNodeId(null);
+                    return [...prev, edge];
+                });
+            }, []);
+
+            const updateEdge = useCallback((id, updates) => {
+                setEdges(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+            }, []);
+
+            const deleteEdge = useCallback((id) => {
+                setEdges(prev => prev.filter(e => e.id !== id));
+                setSelectedEdgeId(prev => prev === id ? null : prev);
+            }, []);
+
+            // ---- Canvas helpers ----
+            const screenToCanvas = useCallback((clientX, clientY) => {
+                const rect = viewportRef.current.getBoundingClientRect();
+                return {
+                    x: (clientX - rect.left - viewport.x) / viewport.zoom,
+                    y: (clientY - rect.top - viewport.y) / viewport.zoom,
+                };
+            }, [viewport]);
+
+            const handleCanvasMouseDown = useCallback((e) => {
+                if (e.target !== e.currentTarget && !e.target.closest('.edges-svg')) return;
+                if (connecting) {
+                    setConnecting(null);
+                    return;
+                }
+                if (panActiveRef.current) return;
+                panActiveRef.current = true;
+                setIsPanning(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startVX = viewport.x;
+                const startVY = viewport.y;
+
+                function onMove(ev) {
+                    setViewport(v => ({
+                        ...v,
+                        x: startVX + (ev.clientX - startX),
+                        y: startVY + (ev.clientY - startY),
+                    }));
+                }
+                function onUp() {
+                    panActiveRef.current = false;
+                    setIsPanning(false);
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                }
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+
+                setSelectedNodeId(null);
+                setSelectedEdgeId(null);
+            }, [connecting, viewport]);
+
+            const handleCanvasDoubleClick = useCallback((e) => {
+                if (e.target !== e.currentTarget) return;
+                const pos = screenToCanvas(e.clientX, e.clientY);
+                addNode(pos.x - NODE_WIDTH / 2, pos.y - 40);
+            }, [screenToCanvas, addNode]);
+
+            const handleWheel = useCallback((e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.92 : 1.08;
+                setViewport(v => {
+                    const newZoom = Math.max(0.15, Math.min(3, v.zoom * delta));
+                    const rect = viewportRef.current.getBoundingClientRect();
+                    const cx = e.clientX - rect.left;
+                    const cy = e.clientY - rect.top;
+                    return {
+                        x: cx - (cx - v.x) * (newZoom / v.zoom),
+                        y: cy - (cy - v.y) * (newZoom / v.zoom),
+                        zoom: newZoom,
+                    };
+                });
+            }, []);
+
+            useEffect(() => {
+                const el = viewportRef.current;
+                if (!el) return;
+                el.addEventListener('wheel', handleWheel, { passive: false });
+                return () => el.removeEventListener('wheel', handleWheel);
+            }, [handleWheel]);
+
+            const handleCanvasMouseMove = useCallback((e) => {
+                if (connecting) {
+                    const rect = viewportRef.current.getBoundingClientRect();
+                    setMousePos({
+                        x: (e.clientX - rect.left - viewport.x) / viewport.zoom,
+                        y: (e.clientY - rect.top - viewport.y) / viewport.zoom,
+                    });
+                }
+            }, [connecting, viewport]);
+
+            // ---- Connection flow ----
+            const startConnection = useCallback((nodeId) => {
+                setConnecting({ fromId: nodeId });
+                setSelectedNodeId(null);
+                setSelectedEdgeId(null);
+            }, []);
+
+            const endConnection = useCallback((nodeId) => {
+                if (connecting && connecting.fromId !== nodeId) {
+                    addEdge(connecting.fromId, nodeId);
+                }
+                setConnecting(null);
+            }, [connecting, addEdge]);
+
+            // ---- Import/Export ----
+            const exportJSON = useCallback(() => {
+                const data = JSON.stringify({ nodes, edges }, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'funnel-builder-export.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            }, [nodes, edges]);
+
+            const importJSON = useCallback((e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        if (data.nodes) setNodes(data.nodes);
+                        if (data.edges) setEdges(data.edges);
+                        setSelectedNodeId(null);
+                        setSelectedEdgeId(null);
+                    } catch {
+                        alert('Invalid JSON file.');
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            }, []);
+
+            const clearAll = useCallback(() => {
+                setConfirmAction({
+                    title: 'Clear canvas?',
+                    message: 'This will remove all nodes and connections. This cannot be undone.',
+                    onConfirm: () => {
+                        setNodes([]);
+                        setEdges([]);
+                        setSelectedNodeId(null);
+                        setSelectedEdgeId(null);
+                        setConfirmAction(null);
+                    },
+                });
+            }, []);
+
+            // ---- Zoom controls ----
+            const zoomIn = useCallback(() => {
+                setViewport(v => ({ ...v, zoom: Math.min(3, v.zoom * 1.2) }));
+            }, []);
+            const zoomOut = useCallback(() => {
+                setViewport(v => ({ ...v, zoom: Math.max(0.15, v.zoom / 1.2) }));
+            }, []);
+            const fitToView = useCallback(() => {
+                if (nodes.length === 0) {
+                    setViewport({ x: 0, y: 0, zoom: 1 });
+                    return;
+                }
+                const rect = viewportRef.current.getBoundingClientRect();
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                nodes.forEach(n => {
+                    minX = Math.min(minX, n.position.x);
+                    minY = Math.min(minY, n.position.y);
+                    maxX = Math.max(maxX, n.position.x + NODE_WIDTH);
+                    maxY = Math.max(maxY, n.position.y + getNodeHeight(n));
+                });
+                const pad = 100;
+                const w = maxX - minX + pad * 2;
+                const h = maxY - minY + pad * 2;
+                const zoom = Math.min(rect.width / w, rect.height / h, 1.5);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                setViewport({
+                    x: rect.width / 2 - cx * zoom,
+                    y: rect.height / 2 - cy * zoom,
+                    zoom,
+                });
+            }, [nodes]);
+
+            // ---- Lookup helpers ----
+            const nodesById = useMemo(() => {
+                const map = {};
+                nodes.forEach(n => map[n.id] = n);
+                return map;
+            }, [nodes]);
+
+            const selectedNode = selectedNodeId ? nodesById[selectedNodeId] : null;
+            const selectedEdge = selectedEdgeId ? edges.find(e => e.id === selectedEdgeId) : null;
+
+            const gridBgStyle = {
+                backgroundImage: `radial-gradient(circle, var(--grid-dot) 1px, transparent 1px)`,
+                backgroundSize: `${GRID_SIZE * viewport.zoom}px ${GRID_SIZE * viewport.zoom}px`,
+                backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+            };
+
+            return (
+                <div className="app">
+                    {/* Toolbar */}
+                    <div className="toolbar">
+                        <a href="../../index.html" className="toolbar-back">&#8592; Back</a>
+                        <div className="toolbar-sep" />
+                        <span className="toolbar-title">Funnel Builder</span>
+                        <div className="toolbar-sep" />
+                        <button className="toolbar-btn primary" onClick={() => {
+                            const rect = viewportRef.current.getBoundingClientRect();
+                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                            addNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                        }}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            Add Node
+                        </button>
+                        <div className="toolbar-sep" />
+                        <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
+                        <button className="toolbar-btn" onClick={exportJSON}>Export</button>
+                        <input ref={fileInputRef} type="file" accept=".json" className="hidden-input" onChange={importJSON} />
+                        <div className="toolbar-sep" />
+                        <div className="toolbar-zoom">
+                            <button className="zoom-btn" onClick={zoomOut} title="Zoom out">&#8722;</button>
+                            <span className="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
+                            <button className="zoom-btn" onClick={zoomIn} title="Zoom in">+</button>
+                            <button className="zoom-btn" onClick={fitToView} title="Fit to view">&#8862;</button>
+                        </div>
+                        <div className="toolbar-sep" />
+                        <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                    </div>
+
+                    {/* Canvas */}
+                    <div
+                        ref={viewportRef}
+                        className={`canvas-viewport${isPanning ? ' panning' : ''}${connecting ? ' connecting' : ''}`}
+                        style={gridBgStyle}
+                        onMouseDown={handleCanvasMouseDown}
+                        onDoubleClick={handleCanvasDoubleClick}
+                        onMouseMove={handleCanvasMouseMove}
+                    >
+                        <div className="canvas-transform" style={{
+                            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+                        }}>
+                            {/* SVG Edges */}
+                            <svg className="edges-svg">
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                                        <polygon points="0 0, 8 3, 0 6" fill="#999" />
+                                    </marker>
+                                    <marker id="arrowhead-sel" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                                        <polygon points="0 0, 8 3, 0 6" fill="#4361ee" />
+                                    </marker>
+                                </defs>
+                                {edges.map(edge => {
+                                    const srcNode = nodesById[edge.from];
+                                    const tgtNode = nodesById[edge.to];
+                                    if (!srcNode || !tgtNode) return null;
+                                    const src = getOutputPort(srcNode);
+                                    const tgt = getInputPort(tgtNode);
+                                    const path = getBezierPath(src, tgt);
+                                    const isSel = edge.id === selectedEdgeId;
+                                    return (
+                                        <g key={edge.id}>
+                                            <path d={path} fill="none" stroke="transparent" strokeWidth="16"
+                                                style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
+                                            />
+                                            <path d={path}
+                                                className={`edge-path${isSel ? ' selected' : ''}`}
+                                                markerEnd={isSel ? 'url(#arrowhead-sel)' : 'url(#arrowhead)'}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
+                                            />
+                                        </g>
+                                    );
+                                })}
+                                {connecting && (() => {
+                                    const srcNode = nodesById[connecting.fromId];
+                                    if (!srcNode) return null;
+                                    const src = getOutputPort(srcNode);
+                                    return <path d={getBezierPath(src, mousePos)} className="temp-edge" />;
+                                })()}
+                            </svg>
+
+                            {/* Edge Labels */}
+                            {edges.map(edge => {
+                                const srcNode = nodesById[edge.from];
+                                const tgtNode = nodesById[edge.to];
+                                if (!srcNode || !tgtNode) return null;
+                                if (!edge.calculations || edge.calculations.length === 0) return null;
+                                const src = getOutputPort(srcNode);
+                                const tgt = getInputPort(tgtNode);
+                                const mid = bezierMidpoint(src, tgt);
+                                const isSel = edge.id === selectedEdgeId;
+                                return (
+                                    <div key={edge.id} className="edge-label-container" style={{ left: mid.x, top: mid.y }}>
+                                        <div className={`edge-label${isSel ? ' selected' : ''}`} onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedEdgeId(edge.id);
+                                            setSelectedNodeId(null);
+                                        }}>
+                                            {edge.calculations.map((calc, i) => {
+                                                const result = resolveExpression(calc.expression, srcNode, tgtNode);
+                                                return (
+                                                    <div key={i} className="edge-label-row">
+                                                        {calc.label || 'Calc'}: <span className="edge-label-value">{formatNumber(result)}{calc.unit ? ` ${calc.unit}` : ''}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Nodes */}
+                            {nodes.map(node => (
+                                <FunnelNode
+                                    key={node.id}
+                                    node={node}
+                                    isSelected={node.id === selectedNodeId}
+                                    connecting={connecting}
+                                    viewportZoom={viewport.zoom}
+                                    onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
+                                    onMove={(pos) => updateNode(node.id, { position: pos })}
+                                    onStartConnection={() => startConnection(node.id)}
+                                    onEndConnection={() => endConnection(node.id)}
+                                />
+                            ))}
+                        </div>
+
+                        {nodes.length === 0 && (
+                            <div className="empty-state">
+                                <h2>Build Your Funnel</h2>
+                                <p>Create nodes and connect them to visualize your data flow.</p>
+                                <span className="hint">Double-click anywhere or click "Add Node"</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Properties Panel */}
+                    {(selectedNode || selectedEdge) && (
+                        <div className="panel-overlay">
+                            <div className="panel-header">
+                                <span className="panel-title">{selectedNode ? 'Node Properties' : 'Edge Properties'}</span>
+                                <button className="panel-close" onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}>&times;</button>
+                            </div>
+                            <div className="panel-body">
+                                {selectedNode && (
+                                    <NodeEditor
+                                        node={selectedNode}
+                                        onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                                        onDelete={() => deleteNode(selectedNode.id)}
+                                    />
+                                )}
+                                {selectedEdge && (
+                                    <EdgeEditor
+                                        edge={selectedEdge}
+                                        sourceNode={nodesById[selectedEdge.from]}
+                                        targetNode={nodesById[selectedEdge.to]}
+                                        onUpdate={(updates) => updateEdge(selectedEdge.id, updates)}
+                                        onDelete={() => deleteEdge(selectedEdge.id)}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="privacy-badge">
+                        Your data stays in your browser &mdash; nothing leaves your machine.
+                    </div>
+
+                    {confirmAction && (
+                        <div className="confirm-overlay" onClick={() => setConfirmAction(null)}>
+                            <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+                                <h3>{confirmAction.title}</h3>
+                                <p>{confirmAction.message}</p>
+                                <div className="confirm-actions">
+                                    <button className="confirm-cancel" onClick={() => setConfirmAction(null)}>Cancel</button>
+                                    <button className="confirm-danger" onClick={confirmAction.onConfirm}>Confirm</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // ========================
+        // FunnelNode Component
+        // ========================
+        function FunnelNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection }) {
+            const [isDragging, setIsDragging] = useState(false);
+            const colorDef = NODE_COLORS[node.color || 0] || NODE_COLORS[0];
+
+            const handleMouseDown = useCallback((e) => {
+                if (e.target.closest('.node-port')) return;
+                e.stopPropagation();
+                onSelect();
+
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...node.position };
+                let currentPos = { ...startPos };
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+                    currentPos = {
+                        x: startPos.x + dx,
+                        y: startPos.y + dy,
+                    };
+                    onMove(currentPos);
+                }
+                function handleUp() {
+                    setIsDragging(false);
+                    onMove({
+                        x: snapToGrid(currentPos.x),
+                        y: snapToGrid(currentPos.y),
+                    });
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [node.position, viewportZoom, onSelect, onMove]);
+
+            return (
+                <div
+                    className={`funnel-node${isSelected ? ' selected' : ''}${isDragging ? ' dragging' : ''}`}
+                    style={{
+                        left: node.position.x,
+                        top: node.position.y,
+                        background: colorDef.bg,
+                        borderColor: isSelected ? undefined : colorDef.border,
+                    }}
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="node-header">{node.label}</div>
+                    <div className="node-metrics">
+                        {node.metrics.length === 0 ? (
+                            <div className="node-no-metrics">No metrics defined</div>
+                        ) : (
+                            node.metrics.map((m, i) => (
+                                <div key={i} className="node-metric">
+                                    <span className="node-metric-label">{m.label || m.key}</span>
+                                    <span className="node-metric-value">{formatNumber(Number(m.value))}</span>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div
+                        className={`node-port port-input${connecting ? ' connectable' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); if (connecting) onEndConnection(); }}
+                        title="Input"
+                    />
+                    <div
+                        className="node-port port-output"
+                        onClick={(e) => { e.stopPropagation(); onStartConnection(); }}
+                        title="Output — click to connect"
+                    />
+                </div>
+            );
+        }
+
+        // ========================
+        // NodeEditor Component
+        // ========================
+        function NodeEditor({ node, onUpdate, onDelete }) {
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Label</div>
+                        <div className="panel-field">
+                            <input
+                                value={node.label}
+                                onChange={e => onUpdate({ label: e.target.value })}
+                                placeholder="Node label..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Color</div>
+                        <div className="color-picker">
+                            {NODE_COLORS.map((c, i) => (
+                                <div
+                                    key={i}
+                                    className={`color-swatch${(node.color || 0) === i ? ' active' : ''}`}
+                                    style={{ background: c.bg, borderColor: c.border }}
+                                    onClick={() => onUpdate({ color: i })}
+                                    title={c.name}
+                                />
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Metrics</div>
+                        {node.metrics.map((m, i) => (
+                            <div key={i} className="metric-card">
+                                <div className="metric-card-header">
+                                    <span className="metric-card-title">Metric {i + 1}</span>
+                                    <button className="metric-delete-btn" onClick={() => {
+                                        const metrics = [...node.metrics];
+                                        metrics.splice(i, 1);
+                                        onUpdate({ metrics });
+                                    }}>&times;</button>
+                                </div>
+                                <div className="panel-field">
+                                    <label>Key (for expressions)</label>
+                                    <input
+                                        value={m.key}
+                                        onChange={e => {
+                                            const metrics = [...node.metrics];
+                                            metrics[i] = { ...m, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() };
+                                            onUpdate({ metrics });
+                                        }}
+                                        placeholder="e.g. lead_count"
+                                    />
+                                </div>
+                                <div className="panel-field">
+                                    <label>Display Label</label>
+                                    <input
+                                        value={m.label}
+                                        onChange={e => {
+                                            const metrics = [...node.metrics];
+                                            metrics[i] = { ...m, label: e.target.value };
+                                            onUpdate({ metrics });
+                                        }}
+                                        placeholder="e.g. Lead Count"
+                                    />
+                                </div>
+                                <div className="panel-field">
+                                    <label>Value</label>
+                                    <input
+                                        type="number"
+                                        value={m.value}
+                                        onChange={e => {
+                                            const metrics = [...node.metrics];
+                                            metrics[i] = { ...m, value: e.target.value };
+                                            onUpdate({ metrics });
+                                        }}
+                                        placeholder="0"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                        <button className="add-btn" onClick={() => {
+                            onUpdate({ metrics: [...node.metrics, { key: '', label: '', value: 0 }] });
+                        }}>+ Add Metric</button>
+                    </div>
+
+                    <div className="delete-section">
+                        <button className="delete-btn" onClick={onDelete}>Delete Node</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========================
+        // EdgeEditor Component
+        // ========================
+        function EdgeEditor({ edge, sourceNode, targetNode, onUpdate, onDelete }) {
+            if (!sourceNode || !targetNode) return null;
+
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Connection</div>
+                        <div className="edge-info">
+                            From: <span>{sourceNode.label}</span><br />
+                            To: <span>{targetNode.label}</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Calculations</div>
+                        {edge.calculations.map((calc, i) => {
+                            const result = resolveExpression(calc.expression, sourceNode, targetNode);
+                            return (
+                                <div key={i} className="metric-card">
+                                    <div className="metric-card-header">
+                                        <span className="metric-card-title">Calculation {i + 1}</span>
+                                        <button className="metric-delete-btn" onClick={() => {
+                                            const calculations = [...edge.calculations];
+                                            calculations.splice(i, 1);
+                                            onUpdate({ calculations });
+                                        }}>&times;</button>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Label</label>
+                                        <input
+                                            value={calc.label}
+                                            onChange={e => {
+                                                const calculations = [...edge.calculations];
+                                                calculations[i] = { ...calc, label: e.target.value };
+                                                onUpdate({ calculations });
+                                            }}
+                                            placeholder="e.g. Conversion Rate"
+                                        />
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Expression</label>
+                                        <textarea
+                                            value={calc.expression}
+                                            onChange={e => {
+                                                const calculations = [...edge.calculations];
+                                                calculations[i] = { ...calc, expression: e.target.value };
+                                                onUpdate({ calculations });
+                                            }}
+                                            placeholder="e.g. (target.purchasers / source.lead_count) * 100"
+                                        />
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Unit</label>
+                                        <input
+                                            value={calc.unit || ''}
+                                            onChange={e => {
+                                                const calculations = [...edge.calculations];
+                                                calculations[i] = { ...calc, unit: e.target.value };
+                                                onUpdate({ calculations });
+                                            }}
+                                            placeholder="e.g. %, Days"
+                                        />
+                                    </div>
+                                    <div className="calc-result">
+                                        Result: <strong>{formatNumber(result)}{calc.unit ? ` ${calc.unit}` : ''}</strong>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <button className="add-btn" onClick={() => {
+                            onUpdate({ calculations: [...edge.calculations, { label: '', expression: '', unit: '' }] });
+                        }}>+ Add Calculation</button>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Available Variables</div>
+                        <div className="var-hint">
+                            <strong>Source ({sourceNode.label}):</strong><br />
+                            {sourceNode.metrics.length > 0
+                                ? sourceNode.metrics.map((m, i) => (
+                                    <span key={i}><code>source.{m.key || '?'}</code>{i < sourceNode.metrics.length - 1 ? ', ' : ''}</span>
+                                ))
+                                : <em>No metrics</em>
+                            }<br /><br />
+                            <strong>Target ({targetNode.label}):</strong><br />
+                            {targetNode.metrics.length > 0
+                                ? targetNode.metrics.map((m, i) => (
+                                    <span key={i}><code>target.{m.key || '?'}</code>{i < targetNode.metrics.length - 1 ? ', ' : ''}</span>
+                                ))
+                                : <em>No metrics</em>
+                            }
+                        </div>
+                    </div>
+
+                    <div className="delete-section">
+                        <button className="delete-btn" onClick={onDelete}>Delete Connection</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========================
+        // Render
+        // ========================
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+
+</html>
