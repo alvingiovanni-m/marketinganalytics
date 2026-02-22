@@ -13,10 +13,61 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
 - **Edge Calculations** — Add custom formulas to connections. Expressions reference source and target metrics using `source.<key>` and `target.<key>` syntax. Results are displayed live on the connection label.
-- **Pan & Zoom** — 2-finger swipe (or scroll) to pan, pinch (or Ctrl+scroll) to zoom smoothly. Drag empty space to pan. Fit-to-view button centers all nodes.
+- **Multi-Select** — Select multiple nodes, text boxes, and edges at once using Shift+Click or box selection (drag on canvas). Move, copy, paste, duplicate, or delete multiple objects simultaneously.
+- **Pan & Zoom** — 2-finger swipe (or scroll) to pan, pinch (or Ctrl+scroll) to zoom smoothly. Hold Spacebar + drag or Middle-Click + drag to pan. Fit-to-view button centers all nodes.
 - **Export / Import JSON** — Save your funnel as a `.json` file and reload it later. Auto-saves to browser localStorage.
 - **Node Colors** — Pick from 6 color presets to categorize your nodes.
 - **Text Box Labels** — Add free-form text on the canvas to annotate your funnels. Customize text size, bold, and italic styling.
+
+## Multi-Select
+
+The Funnel Builder supports powerful multi-select capabilities that let you work with multiple objects simultaneously:
+
+### Selecting Multiple Objects
+
+**Shift+Click Selection:**
+- Hold `Shift` and click individual objects to toggle them in/out of the selection.
+- Click without `Shift` on a selected object to keep it selected (useful for dragging multiple items).
+- Click without `Shift` on an unselected object to clear the selection and select only that object.
+
+**Box Selection (Drag-Select):**
+- Click and drag on the empty canvas to draw a selection box.
+- All nodes and text boxes that intersect with the box will be selected.
+- Hold `Shift` while box-selecting to **add** to the existing selection instead of replacing it.
+
+### Multi-Object Operations
+
+Once you have multiple objects selected:
+
+- **Move Together**: Drag any selected object to move all selected objects by the same distance.
+- **Copy (`Cmd+C` / `Ctrl+C`)**: Copy all selected objects to the clipboard.
+- **Paste (`Cmd+V` / `Ctrl+V`)**: Paste copied objects with new IDs, offset by 40px from the originals.
+- **Duplicate (`Cmd+D` / `Ctrl+D`)**: Instantly duplicate all selected objects (copy + paste in one action).
+- **Delete (`Delete` / `Backspace`)**: Remove all selected objects and their associated edges at once.
+
+### Canvas Panning vs. Selection
+
+To avoid conflicts between panning and box selection:
+
+- **Spacebar + Drag**: Hold the spacebar and drag to pan the canvas.
+- **Middle-Click + Drag**: Use middle mouse button to pan the canvas.
+- **Left-Click Drag (on empty space)**: Creates a selection box.
+
+### Properties Panel
+
+When multiple objects are selected, the properties panel shows:
+- The number of selected objects
+- Available multi-select actions and keyboard shortcuts
+- Helpful hints for working with multiple objects
+
+Select a single object to edit its individual properties.
+
+### Use Cases
+
+- **Bulk Organization**: Select and move entire sections of your funnel at once.
+- **Template Duplication**: Select a group of related nodes, duplicate them, and create a parallel pipeline.
+- **Quick Cleanup**: Select multiple outdated nodes and delete them in one action.
+- **Batch Copy-Paste**: Copy a complex funnel structure and paste it to create variations.
 
 ## Usage
 
@@ -605,13 +656,19 @@ This demonstrates:
 | Key | Action |
 |-----|--------|
 | Double-click canvas | Add new node |
-| Ctrl+D / Cmd+D | Duplicate selected node or text box |
-| Delete / Backspace | Delete selected node, edge, or text box |
-| Escape | Cancel connection / deselect |
-| Scroll wheel / 2-finger swipe | Pan |
+| Shift+Click | Toggle object in/out of multi-selection |
+| Click + drag (canvas) | Draw selection box to select multiple objects |
+| Shift + drag selection | Add to existing selection with box select |
+| Ctrl+C / Cmd+C | Copy selected objects to clipboard |
+| Ctrl+V / Cmd+V | Paste copied objects (with new IDs, offset +40px) |
+| Ctrl+D / Cmd+D | Duplicate selected objects |
+| Delete / Backspace | Delete selected objects |
+| Escape | Cancel connection / clear selection |
+| Spacebar + drag | Pan canvas |
+| Middle-click + drag | Pan canvas |
+| Scroll wheel / 2-finger swipe | Pan canvas |
 | Ctrl+Scroll / Pinch | Zoom in/out |
-| Click + drag (canvas) | Pan |
-| Click + drag (node) | Move node |
+| Click + drag (node) | Move node (or all selected nodes together) |
 
 ## Privacy
 

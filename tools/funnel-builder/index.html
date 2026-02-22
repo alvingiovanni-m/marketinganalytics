@@ -195,12 +195,56 @@
             cursor: grab;
         }
 
+        .canvas-viewport.select-mode {
+            cursor: default;
+        }
+
         .canvas-viewport.panning {
             cursor: grabbing;
         }
 
         .canvas-viewport.connecting {
             cursor: crosshair;
+        }
+
+        .cursor-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            background: var(--input-bg);
+            border-radius: 8px;
+            padding: 2px;
+            border: 1px solid var(--input-border);
+        }
+
+        .cursor-mode-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .cursor-mode-btn:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: var(--text-primary);
+        }
+
+        .cursor-mode-btn.active {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 1px 3px rgba(67, 97, 238, 0.3);
+        }
+
+        .cursor-mode-btn svg {
+            width: 16px;
+            height: 16px;
         }
 
         .canvas-transform {
@@ -1112,8 +1156,24 @@
             return `${prefix}-${Date.now()}-${++idCounter}`;
         }
 
+        function getNodeWidth(node) {
+            if (node.type === 'global-filter' || node.type === 'stream-filter') {
+                return 220; // Filter nodes are wider
+            }
+            return NODE_WIDTH; // 200px for regular nodes
+        }
+
         function getNodeHeight(node) {
-            const metricsCount = Math.max(node.metrics.length, 1);
+            if (node.type === 'global-filter') {
+                const filterCount = (node.globalFilters || []).length;
+                return NODE_PADDING_Y + NODE_HEADER_H + Math.max(filterCount, 1) * NODE_METRIC_H;
+            }
+            if (node.type === 'stream-filter') {
+                const filterCount = (node.streamFilters || []).length;
+                return NODE_PADDING_Y + NODE_HEADER_H + Math.max(filterCount, 1) * NODE_METRIC_H;
+            }
+            // Regular nodes - add defensive fallback
+            const metricsCount = Math.max((node.metrics || []).length, 1);
             return NODE_PADDING_Y + NODE_HEADER_H + metricsCount * NODE_METRIC_H;
         }
 
@@ -1592,7 +1652,20 @@
             const [nodes, setNodes] = useState([]);
             const [edges, setEdges] = useState([]);
             const [textLabels, setTextLabels] = useState([]);
+
             const [selectedIds, setSelectedIds] = useState([]);
+            const [selectionBox, setSelectionBox] = useState(null);
+            const [cursorMode, setCursorMode] = useState('hand'); // 'hand' | 'select'
+            const [clipboard, setClipboard] = useState({ nodes: [], textLabels: [] });
+
+            const handleSelect = useCallback((id, e) => {
+                if (e && e.shiftKey) {
+                    setSelectedIds(prev => prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]);
+                } else {
+                    setSelectedIds(prev => prev.includes(id) ? prev : [id]);
+                }
+            }, []);
+
             const [connecting, setConnecting] = useState(null);
             const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
             const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -1604,6 +1677,15 @@
             const csvFileInputRef = useRef(null);
             const panActiveRef = useRef(false);
             const initialLoadRef = useRef(false);
+            const spacebarPressedRef = useRef(false);
+            const nodesRef = useRef(nodes);
+            const textLabelsRef = useRef(textLabels);
+            const viewportStateRef = useRef(viewport);
+
+            // Keep refs in sync with state
+            useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+            useEffect(() => { textLabelsRef.current = textLabels; }, [textLabels]);
+            useEffect(() => { viewportStateRef.current = viewport; }, [viewport]);
 
             // Load from localStorage on mount
             useEffect(() => {
@@ -1680,11 +1762,24 @@
 
             // Keyboard shortcuts
             useEffect(() => {
-                function handleKey(e) {
+                function handleKeyDown(e) {
+                    // Track spacebar for canvas panning
+                    if (e.key === ' ') {
+                        spacebarPressedRef.current = true;
+                    }
+
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                     if (e.key === 'Escape') {
                         setConnecting(null);
                         setSelectedIds([]);
+                    }
+                    if (e.key === 'v' || e.key === 'V') {
+                        if (!e.ctrlKey && !e.metaKey) {
+                            setCursorMode('select');
+                        }
+                    }
+                    if (e.key === 'h' || e.key === 'H') {
+                        setCursorMode('hand');
                     }
                     if (e.key === 'Delete' || e.key === 'Backspace') {
                         if (selectedIds.length > 0) {
@@ -1701,9 +1796,70 @@
                             duplicateTextLabel(id);
                         });
                     }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                        if (selectedIds.length > 0) {
+                            // Copy selected objects to clipboard
+                            const nodesToCopy = nodes.filter(n => selectedIds.includes(n.id));
+                            const labelsToCopy = textLabels.filter(l => selectedIds.includes(l.id));
+                            setClipboard({ nodes: nodesToCopy, textLabels: labelsToCopy });
+                        }
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                        if (clipboard.nodes.length > 0 || clipboard.textLabels.length > 0) {
+                            e.preventDefault();
+                            const newNodeIds = [];
+                            const newLabelIds = [];
+
+                            // Paste nodes
+                            clipboard.nodes.forEach(node => {
+                                const newId = genId('node');
+                                const newNode = {
+                                    ...node,
+                                    id: newId,
+                                    label: node.label + ' (copy)',
+                                    position: {
+                                        x: snapToGrid(node.position.x + 40),
+                                        y: snapToGrid(node.position.y + 40),
+                                    },
+                                };
+                                setNodes(prev => [...prev, newNode]);
+                                newNodeIds.push(newId);
+                            });
+
+                            // Paste text labels
+                            clipboard.textLabels.forEach(label => {
+                                const newId = genId('text');
+                                const newLabel = {
+                                    ...label,
+                                    id: newId,
+                                    position: {
+                                        x: snapToGrid(label.position.x + 40),
+                                        y: snapToGrid(label.position.y + 40),
+                                    },
+                                };
+                                setTextLabels(prev => [...prev, newLabel]);
+                                newLabelIds.push(newId);
+                            });
+
+                            // Select the newly pasted objects
+                            setSelectedIds([...newNodeIds, ...newLabelIds]);
+                        }
+                    }
                 }
-                window.addEventListener('keydown', handleKey);
-                return () => window.removeEventListener('keydown', handleKey);
+
+                function handleKeyUp(e) {
+                    // Release spacebar tracking
+                    if (e.key === ' ') {
+                        spacebarPressedRef.current = false;
+                    }
+                }
+
+                window.addEventListener('keydown', handleKeyDown);
+                window.addEventListener('keyup', handleKeyUp);
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    window.removeEventListener('keyup', handleKeyUp);
+                };
             }, [selectedIds, duplicateNode, duplicateTextLabel]);
 
             // ---- Node CRUD ----
@@ -1869,8 +2025,7 @@
                         to: toId,
                         calculations: [],
                     };
-                    setSelectedEdgeId(edge.id);
-                    setSelectedNodeId(null);
+                    setSelectedIds([edge.id]);
                     return [...prev, edge];
                 });
             }, []);
@@ -1894,40 +2049,146 @@
             }, [viewport]);
 
             const handleCanvasMouseDown = useCallback((e) => {
-                if (e.target !== e.currentTarget && !e.target.closest('.edges-svg')) return;
+                if (e.target !== e.currentTarget &&
+                    !e.target.classList.contains('canvas-transform') &&
+                    !e.target.closest('.edges-svg')) return;
                 if (connecting) {
                     setConnecting(null);
                     return;
                 }
                 if (panActiveRef.current) return;
-                panActiveRef.current = true;
-                setIsPanning(true);
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const startVX = viewport.x;
-                const startVY = viewport.y;
 
-                function onMove(ev) {
-                    setViewport(v => ({
-                        ...v,
-                        x: startVX + (ev.clientX - startX),
-                        y: startVY + (ev.clientY - startY),
-                    }));
-                }
-                function onUp() {
-                    panActiveRef.current = false;
-                    setIsPanning(false);
-                    window.removeEventListener('mousemove', onMove);
-                    window.removeEventListener('mouseup', onUp);
-                }
-                window.addEventListener('mousemove', onMove);
-                window.addEventListener('mouseup', onUp);
+                // Check if we should pan: spacebar override, middle-click, or hand mode
+                const shouldPan = spacebarPressedRef.current || e.button === 1 || cursorMode === 'hand';
 
-                setSelectedIds([null]);
-            }, [connecting, viewport]);
+                if (shouldPan) {
+                    // Panning mode
+                    panActiveRef.current = true;
+                    setIsPanning(true);
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const vp = viewportStateRef.current;
+                    const startVX = vp.x;
+                    const startVY = vp.y;
+
+                    function onMove(ev) {
+                        setViewport(v => ({
+                            ...v,
+                            x: startVX + (ev.clientX - startX),
+                            y: startVY + (ev.clientY - startY),
+                        }));
+                    }
+                    function onUp() {
+                        panActiveRef.current = false;
+                        setIsPanning(false);
+                        window.removeEventListener('mousemove', onMove);
+                        window.removeEventListener('mouseup', onUp);
+                    }
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                } else {
+                    // Selection box mode — use inline coordinate conversion to avoid stale closures
+                    const rect = viewportRef.current.getBoundingClientRect();
+                    const v = viewportStateRef.current;
+                    const startPos = {
+                        x: (e.clientX - rect.left - v.x) / v.zoom,
+                        y: (e.clientY - rect.top - v.y) / v.zoom,
+                    };
+                    const shiftHeld = e.shiftKey;
+
+                    // Clear selection if shift is not held
+                    if (!shiftHeld) {
+                        setSelectedIds([]);
+                    }
+
+                    setSelectionBox({
+                        startX: startPos.x,
+                        startY: startPos.y,
+                        currentX: startPos.x,
+                        currentY: startPos.y,
+                    });
+
+                    function onMove(ev) {
+                        const vNow = viewportStateRef.current;
+                        const r = viewportRef.current.getBoundingClientRect();
+                        const currentPos = {
+                            x: (ev.clientX - r.left - vNow.x) / vNow.zoom,
+                            y: (ev.clientY - r.top - vNow.y) / vNow.zoom,
+                        };
+                        setSelectionBox(prev => prev ? {
+                            ...prev,
+                            currentX: currentPos.x,
+                            currentY: currentPos.y,
+                        } : null);
+                    }
+
+                    function onUp(ev) {
+                        const vNow = viewportStateRef.current;
+                        const r = viewportRef.current.getBoundingClientRect();
+                        const endPos = {
+                            x: (ev.clientX - r.left - vNow.x) / vNow.zoom,
+                            y: (ev.clientY - r.top - vNow.y) / vNow.zoom,
+                        };
+
+                        try {
+                            // Calculate selection box bounds
+                            const minX = Math.min(startPos.x, endPos.x);
+                            const maxX = Math.max(startPos.x, endPos.x);
+                            const minY = Math.min(startPos.y, endPos.y);
+                            const maxY = Math.max(startPos.y, endPos.y);
+
+                            // Read latest nodes and textLabels from refs
+                            const currentNodes = nodesRef.current;
+                            const currentTextLabels = textLabelsRef.current;
+
+                            // Find all objects that intersect with the selection box
+                            const selectedNodeIds = currentNodes.filter(node => {
+                                const nodeRight = node.position.x + getNodeWidth(node);
+                                const nodeBottom = node.position.y + getNodeHeight(node);
+                                return (
+                                    node.position.x < maxX &&
+                                    nodeRight > minX &&
+                                    node.position.y < maxY &&
+                                    nodeBottom > minY
+                                );
+                            }).map(n => n.id);
+
+                            const selectedLabelIds = currentTextLabels.filter(label => {
+                                const labelWidth = 100;
+                                const labelHeight = 30;
+                                const labelRight = label.position.x + labelWidth;
+                                const labelBottom = label.position.y + labelHeight;
+                                return (
+                                    label.position.x < maxX &&
+                                    labelRight > minX &&
+                                    label.position.y < maxY &&
+                                    labelBottom > minY
+                                );
+                            }).map(l => l.id);
+
+                            // Add to selection (or replace if shift not held)
+                            if (shiftHeld) {
+                                setSelectedIds(prev => [...new Set([...prev, ...selectedNodeIds, ...selectedLabelIds])]);
+                            } else {
+                                setSelectedIds([...selectedNodeIds, ...selectedLabelIds]);
+                            }
+                        } catch (error) {
+                            console.error('Error during selection box intersection test:', error);
+                        } finally {
+                            // Always clean up, even if an error occurred
+                            setSelectionBox(null);
+                            window.removeEventListener('mousemove', onMove);
+                            window.removeEventListener('mouseup', onUp);
+                        }
+                    }
+
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                }
+            }, [connecting, cursorMode]);
 
             const handleCanvasDoubleClick = useCallback((e) => {
-                if (e.target !== e.currentTarget) return;
+                if (e.target !== e.currentTarget && !e.target.classList.contains('canvas-transform')) return;
                 const pos = screenToCanvas(e.clientX, e.clientY);
                 addNode(pos.x - NODE_WIDTH / 2, pos.y - 40);
             }, [screenToCanvas, addNode]);
@@ -1986,8 +2247,7 @@
                     return;
                 }
                 setConnecting({ fromId: nodeId });
-                setSelectedNodeId(null);
-                setSelectedEdgeId(null);
+                setSelectedIds([]);
             }, [nodes]);
 
             const endConnection = useCallback((nodeId) => {
@@ -2037,7 +2297,7 @@
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         if (data.textLabels) setTextLabels(data.textLabels);
-                        setSelectedIds([null]);
+                        setSelectedIds([]);
                     } catch {
                         alert('Invalid JSON file.');
                     }
@@ -2079,7 +2339,7 @@
                         setNodes([]);
                         setEdges([]);
                         setTextLabels([]);
-                        setSelectedIds([null]);
+                        setSelectedIds([]);
                         setConfirmAction(null);
                     },
                 });
@@ -2205,6 +2465,59 @@
             const selectedNode = selectedIds.length === 1 && nodesById[selectedIds[0]] ? nodesById[selectedIds[0]] : null;
             const selectedEdge = selectedIds.length === 1 ? edges.find(e => e.id === selectedIds[0]) : null;
 
+            // Multi-object move handler
+            const handleMultiMove = useCallback((draggedId, newPosition) => {
+                // If only one object is selected or the dragged object is not selected, just move it
+                if (selectedIds.length <= 1 || !selectedIds.includes(draggedId)) {
+                    const draggedNode = nodesById[draggedId];
+                    const draggedLabel = textLabels.find(l => l.id === draggedId);
+
+                    if (draggedNode) {
+                        updateNode(draggedId, { position: newPosition });
+                    } else if (draggedLabel) {
+                        updateTextLabel(draggedId, { position: newPosition });
+                    }
+                    return;
+                }
+
+                // Calculate delta from the dragged object's original position
+                const draggedNode = nodesById[draggedId];
+                const draggedLabel = textLabels.find(l => l.id === draggedId);
+
+                if (!draggedNode && !draggedLabel) return;
+
+                const originalPos = draggedNode ? draggedNode.position : draggedLabel.position;
+                const dx = newPosition.x - originalPos.x;
+                const dy = newPosition.y - originalPos.y;
+
+                // Apply the same delta to all selected objects
+                setNodes(prev => prev.map(node => {
+                    if (selectedIds.includes(node.id)) {
+                        return {
+                            ...node,
+                            position: {
+                                x: node.position.x + dx,
+                                y: node.position.y + dy,
+                            }
+                        };
+                    }
+                    return node;
+                }));
+
+                setTextLabels(prev => prev.map(label => {
+                    if (selectedIds.includes(label.id)) {
+                        return {
+                            ...label,
+                            position: {
+                                x: label.position.x + dx,
+                                y: label.position.y + dy,
+                            }
+                        };
+                    }
+                    return label;
+                }));
+            }, [selectedIds, nodesById, textLabels, updateNode, updateTextLabel]);
+
             const gridBgStyle = {
                 backgroundImage: `radial-gradient(circle, var(--grid-dot) 1px, transparent 1px)`,
                 backgroundSize: `${GRID_SIZE * viewport.zoom}px ${GRID_SIZE * viewport.zoom}px`,
@@ -2218,6 +2531,29 @@
                         <a href="../../index.html" className="toolbar-back">&#8592; Back</a>
                         <div className="toolbar-sep" />
                         <span className="toolbar-title">Funnel Builder</span>
+                        <div className="toolbar-sep" />
+                        <div className="cursor-mode-toggle">
+                            <button
+                                className={`cursor-mode-btn${cursorMode === 'hand' ? ' active' : ''}`}
+                                onClick={() => setCursorMode('hand')}
+                                title="Hand tool (H) — drag to pan"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 11V6a2 2 0 00-2-2 2 2 0 00-2 2v0M14 10V4a2 2 0 00-2-2 2 2 0 00-2 2v6M10 10.5V6a2 2 0 00-2-2 2 2 0 00-2 2v8" />
+                                    <path d="M18 11a2 2 0 012 2v1a8 8 0 01-8 8h-1a8 8 0 01-5.66-2.34" />
+                                    <path d="M6 14v-1.5" />
+                                </svg>
+                            </button>
+                            <button
+                                className={`cursor-mode-btn${cursorMode === 'select' ? ' active' : ''}`}
+                                onClick={() => setCursorMode('select')}
+                                title="Select tool (V) — drag to select"
+                            >
+                                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                    <path d="M4 2l12 9.5L9.5 13 13 22l-3 1-3.5-9L2 18V2h2z" />
+                                </svg>
+                            </button>
+                        </div>
                         <div className="toolbar-sep" />
                         <button className="toolbar-btn primary" onClick={() => {
                             const rect = viewportRef.current.getBoundingClientRect();
@@ -2302,7 +2638,7 @@
                     {/* Canvas */}
                     <div
                         ref={viewportRef}
-                        className={`canvas-viewport${isPanning ? ' panning' : ''}${connecting ? ' connecting' : ''}`}
+                        className={`canvas-viewport${cursorMode === 'select' ? ' select-mode' : ''}${isPanning ? ' panning' : ''}${connecting ? ' connecting' : ''}`}
                         style={gridBgStyle}
                         onMouseDown={handleCanvasMouseDown}
                         onDoubleClick={handleCanvasDoubleClick}
@@ -2333,12 +2669,12 @@
                                         <g key={edge.id}>
                                             <path d={path} fill="none" stroke="transparent" strokeWidth="16"
                                                 style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedIds([edge.id]); }}
+                                                onClick={(e) => { e.stopPropagation(); handleSelect(edge.id, e); }}
                                             />
                                             <path d={path}
                                                 className={`edge-path${isSel ? ' selected' : ''}`}
                                                 markerEnd={isSel ? 'url(#arrowhead-sel)' : 'url(#arrowhead)'}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedIds([edge.id]); }}
+                                                onClick={(e) => { e.stopPropagation(); handleSelect(edge.id, e); }}
                                             />
                                         </g>
                                     );
@@ -2380,6 +2716,23 @@
                                 );
                             })}
 
+                            {/* Selection Box */}
+                            {selectionBox && (
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        left: Math.min(selectionBox.startX, selectionBox.currentX),
+                                        top: Math.min(selectionBox.startY, selectionBox.currentY),
+                                        width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                                        height: Math.abs(selectionBox.currentY - selectionBox.startY),
+                                        border: '2px dashed #4361ee',
+                                        background: 'rgba(67, 97, 238, 0.1)',
+                                        pointerEvents: 'none',
+                                        zIndex: 1000,
+                                    }}
+                                />
+                            )}
+
                             {/* Nodes */}
                             {nodesWithComputedMetrics.map(node => {
                                 if (node.type === 'global-filter') {
@@ -2390,8 +2743,8 @@
                                             isSelected={selectedIds.includes(node.id)}
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
-                                            onSelect={() => { setSelectedIds([node.id]); }}
-                                            onMove={(pos) => updateNode(node.id, { position: pos })}
+                                            onSelect={(e) => { handleSelect(node.id, e); }}
+                                            onMove={(pos) => handleMultiMove(node.id, pos)}
                                         />
                                     );
                                 }
@@ -2405,8 +2758,8 @@
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
                                             allNodes={nodes}
-                                            onSelect={() => { setSelectedIds([node.id]); }}
-                                            onMove={(pos) => updateNode(node.id, { position: pos })}
+                                            onSelect={(e) => { handleSelect(node.id, e); }}
+                                            onMove={(pos) => handleMultiMove(node.id, pos)}
                                             onStartConnection={() => startConnection(node.id)}
                                             onEndConnection={() => endConnection(node.id)}
                                         />
@@ -2419,8 +2772,8 @@
                                         isSelected={selectedIds.includes(node.id)}
                                         connecting={connecting}
                                         viewportZoom={viewport.zoom}
-                                        onSelect={() => { setSelectedIds([node.id]); }}
-                                        onMove={(pos) => updateNode(node.id, { position: pos })}
+                                        onSelect={(e) => { handleSelect(node.id, e); }}
+                                        onMove={(pos) => handleMultiMove(node.id, pos)}
                                         onStartConnection={() => startConnection(node.id)}
                                         onEndConnection={() => endConnection(node.id)}
                                     />
@@ -2432,8 +2785,8 @@
                                     label={label}
                                     isSelected={selectedIds.includes(label.id)}
                                     viewportZoom={viewport.zoom}
-                                    onSelect={() => { setSelectedIds([label.id]); }}
-                                    onMove={(pos) => updateTextLabel(label.id, { position: pos })}
+                                    onSelect={(e) => { handleSelect(label.id, e); }}
+                                    onMove={(pos) => handleMultiMove(label.id, pos)}
                                 />
                             ))}
                         </div>
@@ -2452,17 +2805,36 @@
                         <div className="panel-overlay">
                             <div className="panel-header">
                                 <span className="panel-title">
-                                    {selectedNode
-                                        ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties'
-                                            : selectedNode.type === 'stream-filter' ? 'Stream Filter Properties'
-                                            : 'Node Properties')
-                                        : selectedEdge
-                                            ? 'Edge Properties'
-                                            : 'Text Box Properties'}
+                                    {selectedIds.length > 1
+                                        ? `Multiple Objects Selected (${selectedIds.length})`
+                                        : selectedNode
+                                            ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties'
+                                                : selectedNode.type === 'stream-filter' ? 'Stream Filter Properties'
+                                                    : 'Node Properties')
+                                            : selectedEdge
+                                                ? 'Edge Properties'
+                                                : 'Text Box Properties'}
                                 </span>
-                                <button className="panel-close" onClick={() => { setSelectedIds([null]); }}>&times;</button>
+                                <button className="panel-close" onClick={() => { setSelectedIds([]); }}>&times;</button>
                             </div>
                             <div className="panel-body">
+                                {selectedIds.length > 1 && (
+                                    <div style={{ padding: '20px', textAlign: 'center' }}>
+                                        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                            {selectedIds.length} objects selected
+                                        </p>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                            <p style={{ marginBottom: '8px' }}>You can:</p>
+                                            <ul style={{ listStyle: 'none', padding: 0 }}>
+                                                <li style={{ marginBottom: '4px' }}>• Move all selected objects together</li>
+                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+C</strong> to copy</li>
+                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+V</strong> to paste</li>
+                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+D</strong> to duplicate</li>
+                                                <li style={{ marginBottom: '4px' }}>• <strong>Delete/Backspace</strong> to remove</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                )}
                                 {selectedNode && selectedNode.type === 'global-filter' && (
                                     <GlobalFilterEditor
                                         node={selectedNode}
@@ -2542,7 +2914,7 @@
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
-                onSelect();
+                if (onSelect) onSelect(e);
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -2642,7 +3014,7 @@
                 }
 
                 e.stopPropagation();
-                onSelect();
+                if (onSelect) onSelect(e);
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -2761,7 +3133,7 @@
                 }
 
                 e.stopPropagation();
-                onSelect();
+                if (onSelect) onSelect(e);
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -2839,7 +3211,7 @@
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
-                onSelect();
+                if (onSelect) onSelect(e);
 
                 setIsDragging(true);
                 const startX = e.clientX;
