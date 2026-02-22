@@ -449,6 +449,41 @@
             font-weight: 500;
         }
 
+        /* === Text Labels === */
+        .text-label {
+            position: absolute;
+            z-index: 4;
+            padding: 8px 12px;
+            background: transparent;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: grab;
+            user-select: none;
+            transition: border-color 0.15s, background-color 0.15s;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .text-label:hover {
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .text-label.selected {
+            border-color: var(--primary);
+            background: rgba(67, 97, 238, 0.05);
+        }
+
+        .text-label.dragging {
+            cursor: grabbing;
+            opacity: 0.9;
+        }
+
+        .text-label-content {
+            white-space: pre-wrap;
+            pointer-events: none;
+            color: var(--text-primary);
+        }
+
         /* === Edge Labels === */
         .edge-label-container {
             position: absolute;
@@ -1431,8 +1466,10 @@
         function App() {
             const [nodes, setNodes] = useState([]);
             const [edges, setEdges] = useState([]);
+            const [textLabels, setTextLabels] = useState([]);
             const [selectedNodeId, setSelectedNodeId] = useState(null);
             const [selectedEdgeId, setSelectedEdgeId] = useState(null);
+            const [selectedTextLabelId, setSelectedTextLabelId] = useState(null);
             const [connecting, setConnecting] = useState(null);
             const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
             const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -1503,6 +1540,7 @@
 
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
+                        if (data.textLabels) setTextLabels(data.textLabels);
                     }
                 } catch { }
                 initialLoadRef.current = true;
@@ -1512,10 +1550,10 @@
             useEffect(() => {
                 if (!initialLoadRef.current) return;
                 const t = setTimeout(() => {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, csvData }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, csvData, textLabels }));
                 }, 300);
                 return () => clearTimeout(t);
-            }, [nodes, edges, csvData]);
+            }, [nodes, edges, csvData, textLabels]);
 
             // Keyboard shortcuts
             useEffect(() => {
@@ -1525,6 +1563,7 @@
                         setConnecting(null);
                         setSelectedNodeId(null);
                         setSelectedEdgeId(null);
+                        setSelectedTextLabelId(null);
                     }
                     if (e.key === 'Delete' || e.key === 'Backspace') {
                         if (selectedNodeId) {
@@ -1534,18 +1573,23 @@
                         } else if (selectedEdgeId) {
                             setEdges(prev => prev.filter(e => e.id !== selectedEdgeId));
                             setSelectedEdgeId(null);
+                        } else if (selectedTextLabelId) {
+                            setTextLabels(prev => prev.filter(l => l.id !== selectedTextLabelId));
+                            setSelectedTextLabelId(null);
                         }
                     }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                         e.preventDefault();
                         if (selectedNodeId) {
                             duplicateNode(selectedNodeId);
+                        } else if (selectedTextLabelId) {
+                            duplicateTextLabel(selectedTextLabelId);
                         }
                     }
                 }
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [selectedNodeId, selectedEdgeId, duplicateNode]);
+            }, [selectedNodeId, selectedEdgeId, selectedTextLabelId, duplicateNode, duplicateTextLabel]);
 
             // ---- Node CRUD ----
             const addNode = useCallback((x, y) => {
@@ -1632,7 +1676,50 @@
                 setNodes(prev => [...prev, newNode]);
                 setSelectedNodeId(newNode.id);
                 setSelectedEdgeId(null);
+                setSelectedTextLabelId(null);
             }, [nodes]);
+
+            // ---- Text Label CRUD ----
+            const addTextLabel = useCallback((x, y) => {
+                const newLabel = {
+                    id: genId('text'),
+                    position: { x: snapToGrid(x), y: snapToGrid(y) },
+                    content: 'Text Label',
+                    fontSize: 14,
+                    fontWeight: 'normal',
+                    fontStyle: 'normal'
+                };
+                setTextLabels(prev => [...prev, newLabel]);
+                setSelectedTextLabelId(newLabel.id);
+                setSelectedNodeId(null);
+                setSelectedEdgeId(null);
+            }, []);
+
+            const updateTextLabel = useCallback((id, updates) => {
+                setTextLabels(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+            }, []);
+
+            const deleteTextLabel = useCallback((id) => {
+                setTextLabels(prev => prev.filter(l => l.id !== id));
+                setSelectedTextLabelId(prev => prev === id ? null : prev);
+            }, []);
+
+            const duplicateTextLabel = useCallback((id) => {
+                const source = textLabels.find(l => l.id === id);
+                if (!source) return;
+                const newLabel = {
+                    ...source,
+                    id: genId('text'),
+                    position: {
+                        x: snapToGrid(source.position.x + 40),
+                        y: snapToGrid(source.position.y + 40)
+                    }
+                };
+                setTextLabels(prev => [...prev, newLabel]);
+                setSelectedTextLabelId(newLabel.id);
+                setSelectedNodeId(null);
+                setSelectedEdgeId(null);
+            }, [textLabels]);
 
             // ---- Edge CRUD ----
             const addEdge = useCallback((fromId, toId) => {
@@ -1782,7 +1869,7 @@
 
             // ---- Import/Export ----
             const exportJSON = useCallback(() => {
-                const data = JSON.stringify({ nodes, edges, csvData }, null, 2);
+                const data = JSON.stringify({ nodes, edges, csvData, textLabels }, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -1813,8 +1900,10 @@
                         }
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
+                        if (data.textLabels) setTextLabels(data.textLabels);
                         setSelectedNodeId(null);
                         setSelectedEdgeId(null);
+                        setSelectedTextLabelId(null);
                     } catch {
                         alert('Invalid JSON file.');
                     }
@@ -1855,8 +1944,10 @@
                     onConfirm: () => {
                         setNodes([]);
                         setEdges([]);
+                        setTextLabels([]);
                         setSelectedNodeId(null);
                         setSelectedEdgeId(null);
+                        setSelectedTextLabelId(null);
                         setConfirmAction(null);
                     },
                 });
@@ -1989,6 +2080,18 @@
                         }}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                             Add Node
+                        </button>
+                        <button className="toolbar-btn" onClick={() => {
+                            const rect = viewportRef.current.getBoundingClientRect();
+                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                            addTextLabel(center.x - 50, center.y - 15);
+                        }} title="Add Text Box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                                <line x1="9" y1="20" x2="15" y2="20"></line>
+                                <line x1="12" y1="4" x2="12" y2="20"></line>
+                            </svg>
+                            Add Text Box
                         </button>
                         {csvData && (
                             <button className="toolbar-btn" onClick={() => {
@@ -2148,9 +2251,19 @@
                                     />
                                 );
                             })}
+                            {textLabels.map(label => (
+                                <TextLabelNode
+                                    key={label.id}
+                                    label={label}
+                                    isSelected={label.id === selectedTextLabelId}
+                                    viewportZoom={viewport.zoom}
+                                    onSelect={() => { setSelectedTextLabelId(label.id); setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                                    onMove={(pos) => updateTextLabel(label.id, { position: pos })}
+                                />
+                            ))}
                         </div>
 
-                        {nodes.length === 0 && (
+                        {nodes.length === 0 && textLabels.length === 0 && (
                             <div className="empty-state">
                                 <h2>Build Your Funnel</h2>
                                 <p>Create nodes and connect them to visualize your data flow.</p>
@@ -2160,15 +2273,17 @@
                     </div>
 
                     {/* Properties Panel */}
-                    {(selectedNode || selectedEdge) && (
+                    {(selectedNode || selectedEdge || selectedTextLabelId) && (
                         <div className="panel-overlay">
                             <div className="panel-header">
                                 <span className="panel-title">
                                     {selectedNode
                                         ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties' : 'Node Properties')
-                                        : 'Edge Properties'}
+                                        : selectedEdge
+                                            ? 'Edge Properties'
+                                            : 'Text Box Properties'}
                                 </span>
-                                <button className="panel-close" onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}>&times;</button>
+                                <button className="panel-close" onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}>&times;</button>
                             </div>
                             <div className="panel-body">
                                 {selectedNode && selectedNode.type === 'global-filter' && (
@@ -2198,6 +2313,14 @@
                                         targetNode={nodesByIdWithMetrics[selectedEdge.to]}
                                         onUpdate={(updates) => updateEdge(selectedEdge.id, updates)}
                                         onDelete={() => deleteEdge(selectedEdge.id)}
+                                    />
+                                )}
+                                {selectedTextLabelId && (
+                                    <TextLabelEditor
+                                        label={textLabels.find(l => l.id === selectedTextLabelId)}
+                                        onUpdate={(updates) => updateTextLabel(selectedTextLabelId, updates)}
+                                        onDelete={() => deleteTextLabel(selectedTextLabelId)}
+                                        onDuplicate={() => duplicateTextLabel(selectedTextLabelId)}
                                     />
                                 )}
                             </div>
@@ -2404,6 +2527,113 @@
         }
 
         // ========================
+        // TextLabel Components
+        // ========================
+        function TextLabelNode({ label, isSelected, viewportZoom, onSelect, onMove }) {
+            const [isDragging, setIsDragging] = useState(false);
+
+            const handleMouseDown = useCallback((e) => {
+                e.stopPropagation();
+                onSelect();
+
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...label.position };
+                let currentPos = { ...startPos };
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+                    currentPos = {
+                        x: startPos.x + dx,
+                        y: startPos.y + dy,
+                    };
+                    onMove(currentPos);
+                }
+                function handleUp() {
+                    setIsDragging(false);
+                    onMove({
+                        x: snapToGrid(currentPos.x),
+                        y: snapToGrid(currentPos.y),
+                    });
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [label.position, viewportZoom, onSelect, onMove]);
+
+            return (
+                <div
+                    className={`text-label${isSelected ? ' selected' : ''}${isDragging ? ' dragging' : ''}`}
+                    style={{
+                        left: label.position.x,
+                        top: label.position.y,
+                        fontSize: `${label.fontSize || 14}px`,
+                        fontWeight: label.fontWeight || 'normal',
+                        fontStyle: label.fontStyle || 'normal',
+                    }}
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="text-label-content">{label.content || 'Text Label'}</div>
+                </div>
+            );
+        }
+
+        function TextLabelEditor({ label, onUpdate, onDelete, onDuplicate }) {
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Text Content</div>
+                        <div className="panel-field">
+                            <textarea
+                                value={label.content || ''}
+                                onChange={e => onUpdate({ content: e.target.value })}
+                                placeholder="Enter text..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Styling</div>
+                        <div className="panel-field">
+                            <label>Font Size (px)</label>
+                            <input
+                                type="number"
+                                value={label.fontSize || 14}
+                                onChange={e => onUpdate({ fontSize: Number(e.target.value) || 14 })}
+                                min="8"
+                                max="72"
+                            />
+                        </div>
+                        <div className="panel-field" style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                            <button
+                                className={`toolbar-btn ${label.fontWeight === 'bold' ? 'primary' : ''}`}
+                                onClick={() => onUpdate({ fontWeight: label.fontWeight === 'bold' ? 'normal' : 'bold' })}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Bold
+                            </button>
+                            <button
+                                className={`toolbar-btn ${label.fontStyle === 'italic' ? 'primary' : ''}`}
+                                onClick={() => onUpdate({ fontStyle: label.fontStyle === 'italic' ? 'normal' : 'italic' })}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Italic
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="panel-section delete-section">
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                        <button className="delete-btn" onClick={onDelete}>Delete</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========================
         // NodeEditor Component
         // ========================
         function GlobalFilterEditor({ node, csvData, onUpdate, onDelete, onDuplicate }) {
@@ -2521,9 +2751,9 @@
                         </div>
                     )}
 
-                    <div className="panel-section">
-                        <button className="panel-btn danger" onClick={onDelete}>Delete Global Filter</button>
-                        <button className="panel-btn" onClick={onDuplicate}>Duplicate</button>
+                    <div className="delete-section">
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                        <button className="delete-btn" onClick={onDelete}>Delete</button>
                     </div>
                 </div>
             );
@@ -3001,8 +3231,8 @@
                     </div>
 
                     <div className="delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate Node</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete Node</button>
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                        <button className="delete-btn" onClick={onDelete}>Delete</button>
                     </div>
                 </div>
             );
