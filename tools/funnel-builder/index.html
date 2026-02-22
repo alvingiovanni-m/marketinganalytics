@@ -1605,6 +1605,7 @@
                 setNodes(prev => [...prev, node]);
                 setSelectedNodeId(node.id);
                 setSelectedEdgeId(null);
+                setSelectedTextLabelId(null);
             }, []);
 
             const addGlobalFilterNode = useCallback((x, y) => {
@@ -1619,6 +1620,7 @@
                 setNodes(prev => [...prev, node]);
                 setSelectedNodeId(node.id);
                 setSelectedEdgeId(null);
+                setSelectedTextLabelId(null);
             }, []);
 
             const updateNode = useCallback((id, updates) => {
@@ -1651,6 +1653,7 @@
                     setNodes(prev => [...prev, newNode]);
                     setSelectedNodeId(newNode.id);
                     setSelectedEdgeId(null);
+                    setSelectedTextLabelId(null);
                     return;
                 }
 
@@ -1788,6 +1791,7 @@
 
                 setSelectedNodeId(null);
                 setSelectedEdgeId(null);
+                setSelectedTextLabelId(null);
             }, [connecting, viewport]);
 
             const handleCanvasDoubleClick = useCallback((e) => {
@@ -2174,12 +2178,12 @@
                                         <g key={edge.id}>
                                             <path d={path} fill="none" stroke="transparent" strokeWidth="16"
                                                 style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); setSelectedTextLabelId(null); }}
                                             />
                                             <path d={path}
                                                 className={`edge-path${isSel ? ' selected' : ''}`}
                                                 markerEnd={isSel ? 'url(#arrowhead-sel)' : 'url(#arrowhead)'}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); setSelectedTextLabelId(null); }}
                                             />
                                         </g>
                                     );
@@ -2208,6 +2212,7 @@
                                             e.stopPropagation();
                                             setSelectedEdgeId(edge.id);
                                             setSelectedNodeId(null);
+                                            setSelectedTextLabelId(null);
                                         }}>
                                             {edge.calculations.map((calc, i) => {
                                                 const result = resolveExpression(calc.expression, srcNode, tgtNode);
@@ -2232,7 +2237,7 @@
                                             isSelected={node.id === selectedNodeId}
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
-                                            onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
+                                            onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}
                                             onMove={(pos) => updateNode(node.id, { position: pos })}
                                         />
                                     );
@@ -2244,7 +2249,7 @@
                                         isSelected={node.id === selectedNodeId}
                                         connecting={connecting}
                                         viewportZoom={viewport.zoom}
-                                        onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
+                                        onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}
                                         onMove={(pos) => updateNode(node.id, { position: pos })}
                                         onStartConnection={() => startConnection(node.id)}
                                         onEndConnection={() => endConnection(node.id)}
