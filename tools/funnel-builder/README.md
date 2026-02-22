@@ -8,6 +8,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Duplicate Nodes** — Clone an existing node with all its properties (metrics, color, CSV configuration) using the "Duplicate Node" button in the properties panel or the `Ctrl+D` / `Cmd+D` keyboard shortcut.
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
 - **Global Filter Nodes** — Apply scenario-wide filters that affect all CSV data across every node on the canvas. Set conditions like "Country = US" or "Date > 2024-01-01" once, and all nodes automatically use the filtered dataset. Multiple global filters combine with AND logic.
+- **Stream Filter Nodes** — Apply flow-based filters that only affect downstream connected nodes. Unlike global filters (which affect all nodes), stream filters create scoped filtering pipelines where different branches of your funnel can have different filter contexts.
 - **Multi-Source Derived Metrics** — Create metrics on a node that are computed from metrics of **any or all** upstream (source) nodes. Build true data pipelines where values flow through your funnel. A single expression can combine metrics from multiple source nodes (e.g., `facebook_ads.leads + google_ads.leads`).
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
@@ -192,6 +193,197 @@ Global Filter Nodes are visually distinct:
 3. **Campaign Isolation**: Filter to a specific marketing campaign ID to see how it performs across all conversion stages.
 4. **Product Category Focus**: Filter to "Category = Electronics" to analyze just that product line across all metrics.
 
+## Stream Filter Nodes
+
+Stream Filter Nodes enable **flow-based filtering** where filters apply only to **downstream connected nodes** in the graph. Unlike Global Filter Nodes (which affect all nodes regardless of connections), Stream Filters create scoped data pipelines where different branches of your funnel can have different filter contexts.
+
+### When to Use Stream Filters vs Global Filters
+
+| Feature | Global Filter | Stream Filter |
+|---------|---------------|---------------|
+| **Scope** | Affects ALL nodes on canvas | Affects only downstream connected nodes |
+| **Connections** | No ports, cannot be connected | Has input/output ports, participates in graph |
+| **Use Case** | Scenario-wide filtering | Branch-specific filtering |
+| **Example** | "Show only 2024 data across entire funnel" | "Show Facebook Ads performance in left branch, Google Ads in right branch" |
+
+**Use Stream Filters when you want to:**
+- Compare different segments side-by-side in the same funnel
+- Create parallel processing pipelines with different filter contexts
+- Apply progressive filtering where filters stack as data flows downstream
+- Build complex multi-path funnels with branch-specific conditions
+
+**Use Global Filters when you want to:**
+- Apply a scenario-wide filter that affects every node
+- Switch between different time periods or regions for the entire analysis
+- Simplify your funnel by avoiding duplicate filters on every node
+
+### Creating a Stream Filter Node
+
+1. **Upload CSV data first**: Stream filters only appear when CSV data is loaded.
+2. **Click "Add Stream Filter"** in the toolbar (appears next to "Add Global Filter" when CSV is loaded).
+3. **Position and connect**: Stream filter nodes have **both input and output ports** — connect them between nodes to create filtered data flows.
+4. **Configure filters**: Click the stream filter node to open its properties panel and add filter conditions.
+
+### How Stream Filters Work
+
+Stream filters create a **directional data flow pipeline**:
+
+```
+Global Filters (apply to all)
+        ↓
+Stream Filters (apply to downstream nodes only)
+        ↓
+Per-Node Filters (apply to individual node)
+        ↓
+Aggregation (SUM, AVG, etc.)
+```
+
+**Example 1: Simple Stream Filter**
+```
+Raw CSV: 1000 rows
+
+    ↓
+
+Stream Filter: "Country = US"
+
+    ↓
+
+Node A: Computes on US data only (300 rows)
+```
+
+**Example 2: Branching with Different Stream Filters**
+```
+                    Raw CSV: 1000 rows
+                           ↓
+                   ┌───────┴───────┐
+                   ↓               ↓
+    Stream Filter "Country = US"   Stream Filter "Country = UK"
+                   ↓               ↓
+        Node A (300 US rows)      Node B (200 UK rows)
+```
+
+Both Node A and Node B work on the same raw CSV, but see different filtered subsets.
+
+**Example 3: Sequential Stream Filters (Transitive)**
+```
+Raw CSV: 1000 rows
+        ↓
+Stream Filter A: "Year = 2024"
+        ↓ (500 rows)
+Stream Filter B: "Country = US"
+        ↓ (200 rows)
+Node A: Receives data filtered by BOTH A and B
+```
+
+Stream filters are **transitive** — filters stack as you move downstream.
+
+**Example 4: Multiple Paths Merging (AND Combination)**
+```
+                Raw CSV: 1000 rows
+                       ↓
+        ┌──────────────┴──────────────┐
+        ↓                             ↓
+Stream Filter A                 Stream Filter B
+"Product = Shoes"              "Category = Electronics"
+        ↓                             ↓
+        └──────────────┬──────────────┘
+                       ↓
+                    Node C
+        (Receives rows matching BOTH filters)
+```
+
+When a node is reachable through multiple paths with different stream filters, it receives the **intersection** (AND) of all filters.
+
+### Configuring Stream Filters
+
+The Stream Filter properties panel includes:
+
+- **Label**: Name your stream filter (e.g., "US Region" or "2024 Data")
+- **Stream Filters section**:
+  - **Column**: Select which CSV column to filter
+  - **Operator**: Choose Equals, Not Equals, Contains, Greater Than, or Less Than
+  - **Value**: Enter the filter value (autocomplete suggestions from your data)
+  - **Row count indicator**: Shows "X of Y rows match" (after global filters + this stream filter's own filters)
+  - **Info text**: "These filters apply to all downstream connected nodes"
+- **Add Filter button**: Add multiple filter conditions (combine with AND logic)
+- **Delete / Duplicate buttons**: Remove or copy the stream filter node
+
+### Visual Design
+
+Stream Filter Nodes are visually distinct from both regular nodes and global filter nodes:
+- **Cyan/teal gradient background** (unlike white for regular nodes, amber for global filters)
+- **Flow filter icon** in the header (funnel with arrow)
+- **Input AND output ports** (unlike global filter nodes which have no ports)
+- **Filter summaries** displayed on node body (e.g., "country = US")
+- **Row count badge** showing "X of Y rows match"
+
+### Filter Application Order
+
+The complete filter pipeline is:
+
+1. **Global Filters** → Applied to raw CSV data (affects all nodes)
+2. **Stream Filters** → Applied to globally-filtered data (affects downstream nodes only)
+3. **Per-Node Filters** → Applied to stream-filtered data (affects individual node only)
+4. **Aggregation** → SUM, AVG, COUNT, etc. computed on final filtered rows
+
+### Use Cases
+
+1. **Multi-Channel Comparison**:
+   ```
+   Raw Data → Stream Filter "Source = Facebook" → Facebook Funnel
+           ↘ Stream Filter "Source = Google" → Google Funnel
+   ```
+   Analyze different marketing channels side-by-side in the same canvas.
+
+2. **Regional Analysis with Sub-Segments**:
+   ```
+   Global Filter: "Year = 2024"
+           ↓
+   Stream Filter: "Region = North America"
+           ↓
+   ┌───────┴───────┐
+   ↓               ↓
+   "Product = A"   "Product = B"
+   ```
+   Filter to a year globally, then split by region and product using stream filters.
+
+3. **Progressive Filtering Pipeline**:
+   ```
+   Raw → Filter "Active = Yes" → Filter "Premium = Yes" → Filter "Churned = No" → Final Segment
+   ```
+   Stack multiple stream filters to progressively narrow down to a specific segment.
+
+4. **A/B Test Comparison**:
+   ```
+   Raw → Stream Filter "Variant = A" → Variant A Metrics
+      ↘ Stream Filter "Variant = B" → Variant B Metrics
+   ```
+   Compare test variants in parallel pipelines.
+
+### Important Notes
+
+- **Connections required**: Unlike global filters, stream filters must be connected to nodes via edges to have any effect.
+- **Directional flow**: Stream filters only affect nodes that are **downstream** (reachable by following outgoing edges).
+- **Upstream unaffected**: Nodes upstream of a stream filter are not affected by it.
+- **Stacking behavior**: Multiple stream filters in sequence combine with AND logic (all conditions must match).
+- **Client-side processing**: All filtering happens in your browser — no data is sent externally.
+- **Persistence**: Stream filter nodes and their configurations are saved in localStorage and JSON exports.
+- **Duplication**: Use Ctrl+D / Cmd+D to duplicate stream filter nodes.
+- **No metrics**: Stream Filter nodes don't compute CSV metrics or derived metrics — they only filter data for downstream nodes.
+
+### Stream Filter vs Global Filter: Quick Reference
+
+Choose **Global Filter** when:
+- ✓ You want to filter all nodes on the canvas
+- ✓ You're analyzing a single scenario (e.g., "2024 only")
+- ✓ You want to switch filter contexts for the entire funnel at once
+
+Choose **Stream Filter** when:
+- ✓ You want to compare different segments side-by-side
+- ✓ You need different filter contexts for different branches
+- ✓ You're building a multi-path funnel with branch-specific conditions
+- ✓ You want to progressively filter data as it flows through the pipeline
+
 ## Derived Metrics (Multi-Source Data Input)
 
 Derived Metrics allow you to create true data pipelines where metric values flow from upstream (source) nodes to downstream (target) nodes. Unlike edge calculations (which only display results on the connection), derived metrics become **first-class metrics on the target node** — available for display, downstream calculations, and further derivation.
@@ -332,6 +524,16 @@ This demonstrates:
       "globalFilters": [
         { "column": "country", "operator": "equals", "value": "US" },
         { "column": "year", "operator": "equals", "value": "2024" }
+      ]
+    },
+    {
+      "id": "stream-filter-1",
+      "type": "stream-filter",
+      "label": "Facebook Ads Only",
+      "position": { "x": 96, "y": 350 },
+      "color": 5,
+      "streamFilters": [
+        { "column": "lead_source", "operator": "equals", "value": "Facebook Ads" }
       ]
     },
     {

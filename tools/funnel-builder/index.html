@@ -449,6 +449,96 @@
             font-weight: 500;
         }
 
+        /* === Stream Filter Node === */
+        .stream-filter-node {
+            position: absolute;
+            width: 220px;
+            background: linear-gradient(135deg, #e0f2fe 0%, #ffffff 100%);
+            border: 2px solid #0ea5e9;
+            border-radius: 12px;
+            box-shadow: var(--node-shadow);
+            cursor: grab;
+            user-select: none;
+            z-index: 2;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .stream-filter-node:hover {
+            border-color: #0284c7;
+        }
+
+        .stream-filter-node.selected {
+            border-color: #0ea5e9;
+            box-shadow: 0 2px 12px rgba(14, 165, 233, 0.3);
+        }
+
+        .stream-filter-node.dragging {
+            cursor: grabbing;
+            z-index: 10;
+            opacity: 0.92;
+        }
+
+        .stream-filter-header {
+            padding: 10px 14px 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #075985;
+            border-bottom: 1px solid #bae6fd;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stream-filter-header svg {
+            width: 16px;
+            height: 16px;
+            stroke: #0ea5e9;
+        }
+
+        .stream-filter-body {
+            padding: 8px 14px 10px;
+        }
+
+        .stream-filter-summary {
+            font-size: 11px;
+            color: #075985;
+            padding: 4px 8px;
+            background: rgba(14, 165, 233, 0.1);
+            border-radius: 6px;
+            margin-bottom: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+        }
+
+        .stream-filter-summary-label {
+            font-weight: 600;
+        }
+
+        .stream-filter-summary-operator {
+            color: #0c4a6e;
+            font-weight: 500;
+        }
+
+        .stream-filter-summary-value {
+            font-weight: 600;
+            color: #075985;
+        }
+
+        .stream-filter-no-filters {
+            font-size: 11px;
+            color: #0c4a6e;
+            font-style: italic;
+            padding: 4px 0;
+        }
+
+        .stream-filter-count {
+            font-size: 10px;
+            color: #0c4a6e;
+            padding: 4px 0;
+            font-weight: 500;
+        }
+
         /* === Text Labels === */
         .text-label {
             position: absolute;
@@ -1441,6 +1531,41 @@
                 .flatMap(node => node.globalFilters || []);
         }
 
+        // Collect all stream filters that affect a given node (from upstream stream-filter nodes)
+        function collectUpstreamStreamFilters(nodeId, edges, nodesById) {
+            const visited = new Set();
+            const collectedFilters = [];
+
+            function traverse(currentNodeId) {
+                if (visited.has(currentNodeId)) return; // Prevent infinite loops
+                visited.add(currentNodeId);
+
+                // Find all incoming edges to this node
+                const incomingEdges = edges.filter(e => e.to === currentNodeId);
+
+                for (const edge of incomingEdges) {
+                    const sourceNode = nodesById[edge.from];
+                    if (!sourceNode) continue;
+
+                    // If the source is a stream-filter node, collect its filters
+                    if (sourceNode.type === 'stream-filter') {
+                        const filters = sourceNode.streamFilters || [];
+                        collectedFilters.push(...filters);
+                        // Continue traversing upstream (transitive collection)
+                        traverse(edge.from);
+                    } else {
+                        // Regular nodes: continue traversing upstream
+                        traverse(edge.from);
+                    }
+                }
+            }
+
+            traverse(nodeId);
+
+            // Return collected filters (AND combination - all filters apply)
+            return collectedFilters;
+        }
+
         function computeNodeMetrics(csvData, csvConfig, preFilteredRows) {
             if (!csvData || !csvConfig || !csvConfig.metrics || csvConfig.metrics.length === 0) {
                 return [];
@@ -1467,9 +1592,7 @@
             const [nodes, setNodes] = useState([]);
             const [edges, setEdges] = useState([]);
             const [textLabels, setTextLabels] = useState([]);
-            const [selectedNodeId, setSelectedNodeId] = useState(null);
-            const [selectedEdgeId, setSelectedEdgeId] = useState(null);
-            const [selectedTextLabelId, setSelectedTextLabelId] = useState(null);
+            const [selectedIds, setSelectedIds] = useState([]);
             const [connecting, setConnecting] = useState(null);
             const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
             const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -1561,35 +1684,27 @@
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                     if (e.key === 'Escape') {
                         setConnecting(null);
-                        setSelectedNodeId(null);
-                        setSelectedEdgeId(null);
-                        setSelectedTextLabelId(null);
+                        setSelectedIds([]);
                     }
                     if (e.key === 'Delete' || e.key === 'Backspace') {
-                        if (selectedNodeId) {
-                            setNodes(prev => prev.filter(n => n.id !== selectedNodeId));
-                            setEdges(prev => prev.filter(e => e.from !== selectedNodeId && e.to !== selectedNodeId));
-                            setSelectedNodeId(null);
-                        } else if (selectedEdgeId) {
-                            setEdges(prev => prev.filter(e => e.id !== selectedEdgeId));
-                            setSelectedEdgeId(null);
-                        } else if (selectedTextLabelId) {
-                            setTextLabels(prev => prev.filter(l => l.id !== selectedTextLabelId));
-                            setSelectedTextLabelId(null);
+                        if (selectedIds.length > 0) {
+                            setNodes(prev => prev.filter(n => !selectedIds.includes(n.id)));
+                            setEdges(prev => prev.filter(e => !selectedIds.includes(e.from) && !selectedIds.includes(e.to) && !selectedIds.includes(e.id)));
+                            setTextLabels(prev => prev.filter(l => !selectedIds.includes(l.id)));
+                            setSelectedIds([]);
                         }
                     }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                         e.preventDefault();
-                        if (selectedNodeId) {
-                            duplicateNode(selectedNodeId);
-                        } else if (selectedTextLabelId) {
-                            duplicateTextLabel(selectedTextLabelId);
-                        }
+                        selectedIds.forEach(id => {
+                            duplicateNode(id);
+                            duplicateTextLabel(id);
+                        });
                     }
                 }
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [selectedNodeId, selectedEdgeId, selectedTextLabelId, duplicateNode, duplicateTextLabel]);
+            }, [selectedIds, duplicateNode, duplicateTextLabel]);
 
             // ---- Node CRUD ----
             const addNode = useCallback((x, y) => {
@@ -1603,9 +1718,7 @@
                     derivedMetrics: [],
                 };
                 setNodes(prev => [...prev, node]);
-                setSelectedNodeId(node.id);
-                setSelectedEdgeId(null);
-                setSelectedTextLabelId(null);
+                setSelectedIds([node.id]);
             }, []);
 
             const addGlobalFilterNode = useCallback((x, y) => {
@@ -1618,9 +1731,20 @@
                     globalFilters: [],
                 };
                 setNodes(prev => [...prev, node]);
-                setSelectedNodeId(node.id);
-                setSelectedEdgeId(null);
-                setSelectedTextLabelId(null);
+                setSelectedIds([node.id]);
+            }, []);
+
+            const addStreamFilterNode = useCallback((x, y) => {
+                const node = {
+                    id: genId('stream-filter'),
+                    type: 'stream-filter',
+                    label: 'Stream Filter',
+                    position: { x: snapToGrid(x), y: snapToGrid(y) },
+                    color: 5, // Use purple/distinct color for stream filter nodes
+                    streamFilters: [],
+                };
+                setNodes(prev => [...prev, node]);
+                setSelectedIds([node.id]);
             }, []);
 
             const updateNode = useCallback((id, updates) => {
@@ -1630,7 +1754,7 @@
             const deleteNode = useCallback((id) => {
                 setNodes(prev => prev.filter(n => n.id !== id));
                 setEdges(prev => prev.filter(e => e.from !== id && e.to !== id));
-                setSelectedNodeId(prev => prev === id ? null : prev);
+                setSelectedIds(prev => prev.filter(pid => pid !== id));
             }, []);
 
             const duplicateNode = useCallback((id) => {
@@ -1651,9 +1775,25 @@
                         globalFilters: (source.globalFilters || []).map(f => ({ ...f })),
                     };
                     setNodes(prev => [...prev, newNode]);
-                    setSelectedNodeId(newNode.id);
-                    setSelectedEdgeId(null);
-                    setSelectedTextLabelId(null);
+                    setSelectedIds([newNode.id]);
+                    return;
+                }
+
+                // Handle stream filter nodes differently
+                if (source.type === 'stream-filter') {
+                    const newNode = {
+                        id: genId('stream-filter'),
+                        type: 'stream-filter',
+                        label: source.label + ' (copy)',
+                        position: {
+                            x: snapToGrid(source.position.x + 40),
+                            y: snapToGrid(source.position.y + 40),
+                        },
+                        color: source.color,
+                        streamFilters: (source.streamFilters || []).map(f => ({ ...f })),
+                    };
+                    setNodes(prev => [...prev, newNode]);
+                    setSelectedIds([newNode.id]);
                     return;
                 }
 
@@ -1677,9 +1817,7 @@
                     } : {}),
                 };
                 setNodes(prev => [...prev, newNode]);
-                setSelectedNodeId(newNode.id);
-                setSelectedEdgeId(null);
-                setSelectedTextLabelId(null);
+                setSelectedIds([newNode.id]);
             }, [nodes]);
 
             // ---- Text Label CRUD ----
@@ -1693,9 +1831,7 @@
                     fontStyle: 'normal'
                 };
                 setTextLabels(prev => [...prev, newLabel]);
-                setSelectedTextLabelId(newLabel.id);
-                setSelectedNodeId(null);
-                setSelectedEdgeId(null);
+                setSelectedIds([newLabel.id]);
             }, []);
 
             const updateTextLabel = useCallback((id, updates) => {
@@ -1704,7 +1840,7 @@
 
             const deleteTextLabel = useCallback((id) => {
                 setTextLabels(prev => prev.filter(l => l.id !== id));
-                setSelectedTextLabelId(prev => prev === id ? null : prev);
+                setSelectedIds(prev => prev.filter(pid => pid !== id));
             }, []);
 
             const duplicateTextLabel = useCallback((id) => {
@@ -1719,9 +1855,7 @@
                     }
                 };
                 setTextLabels(prev => [...prev, newLabel]);
-                setSelectedTextLabelId(newLabel.id);
-                setSelectedNodeId(null);
-                setSelectedEdgeId(null);
+                setSelectedIds([newLabel.id]);
             }, [textLabels]);
 
             // ---- Edge CRUD ----
@@ -1747,7 +1881,7 @@
 
             const deleteEdge = useCallback((id) => {
                 setEdges(prev => prev.filter(e => e.id !== id));
-                setSelectedEdgeId(prev => prev === id ? null : prev);
+                setSelectedIds(prev => prev.filter(pid => pid !== id));
             }, []);
 
             // ---- Canvas helpers ----
@@ -1789,9 +1923,7 @@
                 window.addEventListener('mousemove', onMove);
                 window.addEventListener('mouseup', onUp);
 
-                setSelectedNodeId(null);
-                setSelectedEdgeId(null);
-                setSelectedTextLabelId(null);
+                setSelectedIds([null]);
             }, [connecting, viewport]);
 
             const handleCanvasDoubleClick = useCallback((e) => {
@@ -1905,9 +2037,7 @@
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         if (data.textLabels) setTextLabels(data.textLabels);
-                        setSelectedNodeId(null);
-                        setSelectedEdgeId(null);
-                        setSelectedTextLabelId(null);
+                        setSelectedIds([null]);
                     } catch {
                         alert('Invalid JSON file.');
                     }
@@ -1949,9 +2079,7 @@
                         setNodes([]);
                         setEdges([]);
                         setTextLabels([]);
-                        setSelectedNodeId(null);
-                        setSelectedEdgeId(null);
-                        setSelectedTextLabelId(null);
+                        setSelectedIds([null]);
                         setConfirmAction(null);
                     },
                 });
@@ -2005,15 +2133,29 @@
                     ? applyFilters(csvData.rows, globalFilters)
                     : (csvData ? csvData.rows : []);
 
-                // Step 1: Compute CSV metrics for all nodes (using globally filtered rows)
+                // Step 1: Compute CSV metrics for all nodes (using globally filtered rows + stream filters)
                 const nodesWithCSV = nodes.map(node => {
                     // Skip global filter nodes - they don't have CSV metrics
                     if (node.type === 'global-filter') {
                         return node;
                     }
 
+                    // Skip stream filter nodes - they don't have CSV metrics either
+                    if (node.type === 'stream-filter') {
+                        return node;
+                    }
+
                     if (csvData && node.csvConfig && node.csvConfig.metrics && node.csvConfig.metrics.length > 0) {
-                        const csvMetrics = computeNodeMetrics(csvData, node.csvConfig, globallyFilteredRows);
+                        // Collect upstream stream filters for this node
+                        const streamFilters = collectUpstreamStreamFilters(node.id, edges, nodesById);
+
+                        // Apply stream filters on top of global filters
+                        const streamFilteredRows = streamFilters.length > 0
+                            ? applyFilters(globallyFilteredRows, streamFilters)
+                            : globallyFilteredRows;
+
+                        // Compute CSV metrics using stream-filtered rows
+                        const csvMetrics = computeNodeMetrics(csvData, node.csvConfig, streamFilteredRows);
                         return { ...node, metrics: [...csvMetrics, ...(node.metrics || [])] };
                     }
                     return node;
@@ -2060,8 +2202,8 @@
                 return map;
             }, [nodesWithComputedMetrics]);
 
-            const selectedNode = selectedNodeId ? nodesById[selectedNodeId] : null;
-            const selectedEdge = selectedEdgeId ? edges.find(e => e.id === selectedEdgeId) : null;
+            const selectedNode = selectedIds.length === 1 && nodesById[selectedIds[0]] ? nodesById[selectedIds[0]] : null;
+            const selectedEdge = selectedIds.length === 1 ? edges.find(e => e.id === selectedIds[0]) : null;
 
             const gridBgStyle = {
                 backgroundImage: `radial-gradient(circle, var(--grid-dot) 1px, transparent 1px)`,
@@ -2107,6 +2249,19 @@
                                     <path d="M3 4h18M7 9h10M10 14h4M12 19h.01" />
                                 </svg>
                                 Add Global Filter
+                            </button>
+                        )}
+                        {csvData && (
+                            <button className="toolbar-btn" onClick={() => {
+                                const rect = viewportRef.current.getBoundingClientRect();
+                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                addStreamFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                            }} title="Add Stream Filter (applies to downstream nodes)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 4h18M7 9h10M10 14h4" />
+                                    <path d="M12 14l4 4" strokeWidth="2" markerEnd="url(#arrow)" />
+                                </svg>
+                                Add Stream Filter
                             </button>
                         )}
                         <div className="toolbar-sep" />
@@ -2173,17 +2328,17 @@
                                     const src = getOutputPort(srcNode);
                                     const tgt = getInputPort(tgtNode);
                                     const path = getBezierPath(src, tgt);
-                                    const isSel = edge.id === selectedEdgeId;
+                                    const isSel = selectedIds.includes(edge.id);
                                     return (
                                         <g key={edge.id}>
                                             <path d={path} fill="none" stroke="transparent" strokeWidth="16"
                                                 style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); setSelectedTextLabelId(null); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedIds([edge.id]); }}
                                             />
                                             <path d={path}
                                                 className={`edge-path${isSel ? ' selected' : ''}`}
                                                 markerEnd={isSel ? 'url(#arrowhead-sel)' : 'url(#arrowhead)'}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedNodeId(null); setSelectedTextLabelId(null); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedIds([edge.id]); }}
                                             />
                                         </g>
                                     );
@@ -2205,14 +2360,12 @@
                                 const src = getOutputPort(srcNode);
                                 const tgt = getInputPort(tgtNode);
                                 const mid = bezierMidpoint(src, tgt);
-                                const isSel = edge.id === selectedEdgeId;
+                                const isSel = selectedIds.includes(edge.id);
                                 return (
                                     <div key={edge.id} className="edge-label-container" style={{ left: mid.x, top: mid.y }}>
                                         <div className={`edge-label${isSel ? ' selected' : ''}`} onClick={(e) => {
                                             e.stopPropagation();
-                                            setSelectedEdgeId(edge.id);
-                                            setSelectedNodeId(null);
-                                            setSelectedTextLabelId(null);
+                                            setSelectedIds([edge.id]);
                                         }}>
                                             {edge.calculations.map((calc, i) => {
                                                 const result = resolveExpression(calc.expression, srcNode, tgtNode);
@@ -2234,11 +2387,28 @@
                                         <GlobalFilterNode
                                             key={node.id}
                                             node={node}
-                                            isSelected={node.id === selectedNodeId}
+                                            isSelected={selectedIds.includes(node.id)}
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
-                                            onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}
+                                            onSelect={() => { setSelectedIds([node.id]); }}
                                             onMove={(pos) => updateNode(node.id, { position: pos })}
+                                        />
+                                    );
+                                }
+                                if (node.type === 'stream-filter') {
+                                    return (
+                                        <StreamFilterNode
+                                            key={node.id}
+                                            node={node}
+                                            isSelected={selectedIds.includes(node.id)}
+                                            connecting={connecting}
+                                            viewportZoom={viewport.zoom}
+                                            csvData={csvData}
+                                            allNodes={nodes}
+                                            onSelect={() => { setSelectedIds([node.id]); }}
+                                            onMove={(pos) => updateNode(node.id, { position: pos })}
+                                            onStartConnection={() => startConnection(node.id)}
+                                            onEndConnection={() => endConnection(node.id)}
                                         />
                                     );
                                 }
@@ -2246,10 +2416,10 @@
                                     <FunnelNode
                                         key={node.id}
                                         node={node}
-                                        isSelected={node.id === selectedNodeId}
+                                        isSelected={selectedIds.includes(node.id)}
                                         connecting={connecting}
                                         viewportZoom={viewport.zoom}
-                                        onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}
+                                        onSelect={() => { setSelectedIds([node.id]); }}
                                         onMove={(pos) => updateNode(node.id, { position: pos })}
                                         onStartConnection={() => startConnection(node.id)}
                                         onEndConnection={() => endConnection(node.id)}
@@ -2260,9 +2430,9 @@
                                 <TextLabelNode
                                     key={label.id}
                                     label={label}
-                                    isSelected={label.id === selectedTextLabelId}
+                                    isSelected={selectedIds.includes(label.id)}
                                     viewportZoom={viewport.zoom}
-                                    onSelect={() => { setSelectedTextLabelId(label.id); setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                                    onSelect={() => { setSelectedIds([label.id]); }}
                                     onMove={(pos) => updateTextLabel(label.id, { position: pos })}
                                 />
                             ))}
@@ -2278,17 +2448,19 @@
                     </div>
 
                     {/* Properties Panel */}
-                    {(selectedNode || selectedEdge || selectedTextLabelId) && (
+                    {(selectedIds.length > 0) && (
                         <div className="panel-overlay">
                             <div className="panel-header">
                                 <span className="panel-title">
                                     {selectedNode
-                                        ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties' : 'Node Properties')
+                                        ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties'
+                                            : selectedNode.type === 'stream-filter' ? 'Stream Filter Properties'
+                                            : 'Node Properties')
                                         : selectedEdge
                                             ? 'Edge Properties'
                                             : 'Text Box Properties'}
                                 </span>
-                                <button className="panel-close" onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedTextLabelId(null); }}>&times;</button>
+                                <button className="panel-close" onClick={() => { setSelectedIds([null]); }}>&times;</button>
                             </div>
                             <div className="panel-body">
                                 {selectedNode && selectedNode.type === 'global-filter' && (
@@ -2300,7 +2472,17 @@
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
                                     />
                                 )}
-                                {selectedNode && selectedNode.type !== 'global-filter' && (
+                                {selectedNode && selectedNode.type === 'stream-filter' && (
+                                    <StreamFilterEditor
+                                        node={selectedNode}
+                                        csvData={csvData}
+                                        allNodes={nodes}
+                                        onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                                        onDelete={() => deleteNode(selectedNode.id)}
+                                        onDuplicate={() => duplicateNode(selectedNode.id)}
+                                    />
+                                )}
+                                {selectedNode && selectedNode.type !== 'global-filter' && selectedNode.type !== 'stream-filter' && (
                                     <NodeEditor
                                         node={selectedNode}
                                         csvData={csvData}
@@ -2320,12 +2502,12 @@
                                         onDelete={() => deleteEdge(selectedEdge.id)}
                                     />
                                 )}
-                                {selectedTextLabelId && (
+                                {selectedIds.length === 1 && textLabels.some(l => l.id === selectedIds[0]) && (
                                     <TextLabelEditor
-                                        label={textLabels.find(l => l.id === selectedTextLabelId)}
-                                        onUpdate={(updates) => updateTextLabel(selectedTextLabelId, updates)}
-                                        onDelete={() => deleteTextLabel(selectedTextLabelId)}
-                                        onDuplicate={() => duplicateTextLabel(selectedTextLabelId)}
+                                        label={textLabels.find(l => l.id === selectedIds[0])}
+                                        onUpdate={(updates) => updateTextLabel(selectedIds[0], updates)}
+                                        onDelete={() => deleteTextLabel(selectedIds[0])}
+                                        onDuplicate={() => duplicateTextLabel(selectedIds[0])}
                                     />
                                 )}
                             </div>
@@ -2439,6 +2621,124 @@
                             </>
                         )}
                     </div>
+                </div>
+            );
+        }
+
+        function StreamFilterNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, csvData, allNodes }) {
+            const [isDragging, setIsDragging] = useState(false);
+
+            const handleMouseDown = useCallback((e) => {
+                if (e.target.closest('.node-port')) {
+                    e.stopPropagation();
+                    return;
+                }
+
+                // If in connecting mode and this is not the source node, complete the connection
+                if (connecting && connecting.fromId !== node.id) {
+                    e.stopPropagation();
+                    onEndConnection();
+                    return;
+                }
+
+                e.stopPropagation();
+                onSelect();
+
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...node.position };
+                let currentPos = { ...startPos };
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+                    currentPos = {
+                        x: startPos.x + dx,
+                        y: startPos.y + dy,
+                    };
+                    onMove(currentPos);
+                }
+                function handleUp() {
+                    setIsDragging(false);
+                    onMove({
+                        x: snapToGrid(currentPos.x),
+                        y: snapToGrid(currentPos.y),
+                    });
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [node.position, viewportZoom, onSelect, onMove, connecting, onEndConnection]);
+
+            // Calculate row count
+            const totalRows = csvData ? csvData.rows.length : 0;
+            // Apply global filters first
+            const globalFilters = collectGlobalFilters(allNodes || []);
+            const globallyFilteredRows = csvData && globalFilters.length > 0
+                ? applyFilters(csvData.rows, globalFilters)
+                : (csvData ? csvData.rows : []);
+            const filteredRows = csvData && node.streamFilters && node.streamFilters.length > 0
+                ? applyFilters(globallyFilteredRows, node.streamFilters).length
+                : globallyFilteredRows.length;
+
+            const operatorLabels = {
+                equals: '=',
+                not_equals: '≠',
+                contains: '~',
+                greater_than: '>',
+                less_than: '<',
+            };
+
+            return (
+                <div
+                    className={`stream-filter-node${isSelected ? ' selected' : ''}${isDragging ? ' dragging' : ''}`}
+                    style={{
+                        left: node.position.x,
+                        top: node.position.y,
+                    }}
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="stream-filter-header">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 4h18M7 9h10M10 14h4" />
+                            <path d="M12 14l4 4" strokeWidth="2" />
+                        </svg>
+                        {node.label}
+                    </div>
+                    <div className="stream-filter-body">
+                        {!node.streamFilters || node.streamFilters.length === 0 ? (
+                            <div className="stream-filter-no-filters">No filters configured</div>
+                        ) : (
+                            <>
+                                {node.streamFilters.map((filter, i) => (
+                                    <div key={i} className="stream-filter-summary">
+                                        <span className="stream-filter-summary-label">{filter.column}</span>
+                                        <span className="stream-filter-summary-operator">{operatorLabels[filter.operator] || filter.operator}</span>
+                                        <span className="stream-filter-summary-value">"{filter.value}"</span>
+                                    </div>
+                                ))}
+                                {csvData && (
+                                    <div className="stream-filter-count">
+                                        {filteredRows} of {globallyFilteredRows.length} rows match
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                    <div
+                        className={`node-port port-input${connecting ? ' connectable' : ''}`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); if (connecting) onEndConnection(); }}
+                        title="Input"
+                    />
+                    <div
+                        className="node-port port-output"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onStartConnection(); }}
+                        title="Output — click to connect"
+                    />
                 </div>
             );
         }
@@ -2750,6 +3050,143 @@
                             ))}
                             <button className="add-btn" onClick={() => {
                                 onUpdate({ globalFilters: [...globalFilters, { column: '', operator: 'equals', value: '' }] });
+                            }}>
+                                + Add Filter
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="delete-section">
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                        <button className="delete-btn" onClick={onDelete}>Delete</button>
+                    </div>
+                </div>
+            );
+        }
+
+        function StreamFilterEditor({ node, csvData, allNodes, onUpdate, onDelete, onDuplicate }) {
+            const streamFilters = node.streamFilters || [];
+
+            // Helper to get distinct values for a column
+            const getDistinctValues = (column) => {
+                if (!csvData) return [];
+                const values = csvData.rows.map(row => row[column]).filter(v => v);
+                return [...new Set(values)].slice(0, 20); // Limit to 20 for performance
+            };
+
+            // Helper to count stream filtered rows
+            const getStreamFilteredRowCount = () => {
+                if (!csvData) return 0;
+                // Apply global filters first
+                const globalFilters = collectGlobalFilters(allNodes || []);
+                const globallyFilteredRows = globalFilters.length > 0
+                    ? applyFilters(csvData.rows, globalFilters)
+                    : csvData.rows;
+
+                if (streamFilters.length === 0) return globallyFilteredRows.length;
+                return applyFilters(globallyFilteredRows, streamFilters).length;
+            };
+
+            const getGlobalFilteredRowCount = () => {
+                if (!csvData) return 0;
+                const globalFilters = collectGlobalFilters(allNodes || []);
+                return globalFilters.length > 0
+                    ? applyFilters(csvData.rows, globalFilters).length
+                    : csvData.rows.length;
+            };
+
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Label</div>
+                        <div className="panel-field">
+                            <input
+                                value={node.label}
+                                onChange={e => onUpdate({ label: e.target.value })}
+                                placeholder="Stream Filter label..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* Stream Filters Section */}
+                    {csvData && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Stream Filters</div>
+                            <div style={{ fontSize: '11px', color: '#0c4a6e', marginBottom: '8px', fontWeight: 500 }}>
+                                {getStreamFilteredRowCount()} of {getGlobalFilteredRowCount()} rows match
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px', fontStyle: 'italic' }}>
+                                These filters apply to all downstream connected nodes.
+                            </div>
+                            {streamFilters.map((filter, i) => (
+                                <div key={i} className="metric-card filter-card">
+                                    <div className="metric-card-header">
+                                        <span className="metric-card-title">Filter {i + 1}</span>
+                                        <button className="metric-delete-btn" onClick={() => {
+                                            const filters = [...streamFilters];
+                                            filters.splice(i, 1);
+                                            onUpdate({ streamFilters: filters });
+                                        }}>&times;</button>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Column</label>
+                                        <select
+                                            value={filter.column || ''}
+                                            onChange={e => {
+                                                const filters = [...streamFilters];
+                                                filters[i] = { ...filter, column: e.target.value };
+                                                onUpdate({ streamFilters: filters });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="">-- Select column --</option>
+                                            {csvData.headers.map((h, idx) => (
+                                                <option key={idx} value={h}>{csvData.rawHeaders[idx]}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Operator</label>
+                                        <select
+                                            value={filter.operator || 'equals'}
+                                            onChange={e => {
+                                                const filters = [...streamFilters];
+                                                filters[i] = { ...filter, operator: e.target.value };
+                                                onUpdate({ streamFilters: filters });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="equals">Equals</option>
+                                            <option value="not_equals">Not Equals</option>
+                                            <option value="contains">Contains</option>
+                                            <option value="greater_than">Greater Than</option>
+                                            <option value="less_than">Less Than</option>
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Value</label>
+                                        <input
+                                            value={filter.value || ''}
+                                            onChange={e => {
+                                                const filters = [...streamFilters];
+                                                filters[i] = { ...filter, value: e.target.value };
+                                                onUpdate({ streamFilters: filters });
+                                            }}
+                                            list={`stream-filter-values-${i}`}
+                                            placeholder="Filter value..."
+                                        />
+                                        {filter.column && (
+                                            <datalist id={`stream-filter-values-${i}`}>
+                                                {getDistinctValues(filter.column).map((v, idx) => (
+                                                    <option key={idx} value={v} />
+                                                ))}
+                                            </datalist>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            <button className="add-btn" onClick={() => {
+                                onUpdate({ streamFilters: [...streamFilters, { column: '', operator: 'equals', value: '' }] });
                             }}>
                                 + Add Filter
                             </button>
