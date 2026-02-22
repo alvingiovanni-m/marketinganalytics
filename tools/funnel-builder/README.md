@@ -12,7 +12,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
 - **Edge Calculations** — Add custom formulas to connections. Expressions reference source and target metrics using `source.<key>` and `target.<key>` syntax. Results are displayed live on the connection label.
-- **Pan & Zoom** — Scroll to zoom, drag empty space to pan. Fit-to-view button centers all nodes.
+- **Pan & Zoom** — 2-finger swipe (or scroll) to pan, pinch (or Ctrl+scroll) to zoom smoothly. Drag empty space to pan. Fit-to-view button centers all nodes.
 - **Export / Import JSON** — Save your funnel as a `.json` file and reload it later. Auto-saves to browser localStorage.
 - **Node Colors** — Pick from 6 color presets to categorize your nodes.
 
@@ -405,7 +405,8 @@ This demonstrates:
 | Ctrl+D / Cmd+D | Duplicate selected node |
 | Delete / Backspace | Delete selected node or edge |
 | Escape | Cancel connection / deselect |
-| Scroll wheel | Zoom in/out |
+| Scroll wheel / 2-finger swipe | Pan |
+| Ctrl+Scroll / Pinch | Zoom in/out |
 | Click + drag (canvas) | Pan |
 | Click + drag (node) | Move node |
 

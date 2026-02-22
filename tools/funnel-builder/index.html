@@ -1711,17 +1711,30 @@
 
             const handleWheel = useCallback((e) => {
                 e.preventDefault();
-                const delta = e.deltaY > 0 ? 0.92 : 1.08;
                 setViewport(v => {
-                    const newZoom = Math.max(0.15, Math.min(3, v.zoom * delta));
-                    const rect = viewportRef.current.getBoundingClientRect();
-                    const cx = e.clientX - rect.left;
-                    const cy = e.clientY - rect.top;
-                    return {
-                        x: cx - (cx - v.x) * (newZoom / v.zoom),
-                        y: cy - (cy - v.y) * (newZoom / v.zoom),
-                        zoom: newZoom,
-                    };
+                    if (e.ctrlKey) {
+                        // Pinch to zoom: smooth scaling using exponential factor
+                        const zoomSpeed = 0.01;
+                        const delta = Math.exp(-e.deltaY * zoomSpeed);
+                        const newZoom = Math.max(0.15, Math.min(3, v.zoom * delta));
+
+                        const rect = viewportRef.current.getBoundingClientRect();
+                        const cx = e.clientX - rect.left;
+                        const cy = e.clientY - rect.top;
+
+                        return {
+                            x: cx - (cx - v.x) * (newZoom / v.zoom),
+                            y: cy - (cy - v.y) * (newZoom / v.zoom),
+                            zoom: newZoom,
+                        };
+                    } else {
+                        // 2-finger swipe to pan
+                        return {
+                            ...v,
+                            x: v.x - e.deltaX,
+                            y: v.y - e.deltaY,
+                        };
+                    }
                 });
             }, []);
 
