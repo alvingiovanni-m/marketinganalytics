@@ -1398,6 +1398,10 @@
             // Build source reference map for this node
             const sourceRefMap = buildSourceRefMap(node.id, edges, resolvedNodesMap);
 
+            // Add 'self' reference to allow nodes to reference their own metrics
+            // At this point, node.metrics contains CSV metrics + manual metrics (no derived metrics yet to avoid circular refs)
+            sourceRefMap['self'] = node;
+
             return node.derivedMetrics.map(dm => {
                 // Resolve the expression using ALL source nodes' metrics
                 let resolved = dm.expression || '';
@@ -1681,11 +1685,17 @@
             const nodesRef = useRef(nodes);
             const textLabelsRef = useRef(textLabels);
             const viewportStateRef = useRef(viewport);
+            const multiDragRef = useRef(null);
 
             // Keep refs in sync with state
             useEffect(() => { nodesRef.current = nodes; }, [nodes]);
             useEffect(() => { textLabelsRef.current = textLabels; }, [textLabels]);
             useEffect(() => { viewportStateRef.current = viewport; }, [viewport]);
+
+            // Clear multi-drag tracking when selection changes
+            useEffect(() => {
+                multiDragRef.current = null;
+            }, [selectedIds]);
 
             // Load from localStorage on mount
             useEffect(() => {
@@ -2469,6 +2479,9 @@
             const handleMultiMove = useCallback((draggedId, newPosition) => {
                 // If only one object is selected or the dragged object is not selected, just move it
                 if (selectedIds.length <= 1 || !selectedIds.includes(draggedId)) {
+                    // Reset multi-drag tracking on single-object drag
+                    multiDragRef.current = null;
+
                     const draggedNode = nodesById[draggedId];
                     const draggedLabel = textLabels.find(l => l.id === draggedId);
 
@@ -2480,15 +2493,30 @@
                     return;
                 }
 
-                // Calculate delta from the dragged object's original position
-                const draggedNode = nodesById[draggedId];
-                const draggedLabel = textLabels.find(l => l.id === draggedId);
+                // Multi-drag: use ref-based position tracking to avoid stale closure issues
+                let referencePos;
 
-                if (!draggedNode && !draggedLabel) return;
+                if (multiDragRef.current && multiDragRef.current.id === draggedId) {
+                    // Ongoing drag: use the last position we applied (from ref)
+                    referencePos = multiDragRef.current.pos;
+                } else {
+                    // New drag: use current position from state (fresh at mousedown)
+                    const draggedNode = nodesById[draggedId];
+                    const draggedLabel = textLabels.find(l => l.id === draggedId);
+                    referencePos = draggedNode ? draggedNode.position :
+                        draggedLabel ? draggedLabel.position : null;
+                }
 
-                const originalPos = draggedNode ? draggedNode.position : draggedLabel.position;
-                const dx = newPosition.x - originalPos.x;
-                const dy = newPosition.y - originalPos.y;
+                if (!referencePos) return;
+
+                // Calculate delta from the reference position
+                const dx = newPosition.x - referencePos.x;
+                const dy = newPosition.y - referencePos.y;
+
+                // Track the position we're applying for the next frame
+                multiDragRef.current = { id: draggedId, pos: { ...newPosition } };
+
+                if (dx === 0 && dy === 0) return;
 
                 // Apply the same delta to all selected objects
                 setNodes(prev => prev.map(node => {
@@ -3814,7 +3842,7 @@
                     )}
 
                     {/* Derived Metrics Section */}
-                    {(incomingSourceNodes.length > 0 || derivedMetrics.length > 0) && (
+                    {(incomingSourceNodes.length > 0 || derivedMetrics.length > 0 || (csvData && csvConfig.metrics && csvConfig.metrics.length > 0)) && (
                         <div className="panel-section">
                             <div className="panel-section-title">Derived Metrics</div>
                             {derivedMetrics.map((dm, i) => {
@@ -3860,12 +3888,13 @@
                                     }
                                 }
 
-                                const disconnectedRefs = referencedIdentifiers.filter(id => !sourceRefMap[id]);
+                                // Exclude 'self' from disconnected check - it's always valid if node has metrics
+                                const disconnectedRefs = referencedIdentifiers.filter(id => id !== 'self' && !sourceRefMap[id]);
                                 const isDisconnected = disconnectedRefs.length > 0;
 
-                                // Compute the current value
+                                // Compute the current value (if there are any available metrics to reference)
                                 let computedValue = 0;
-                                if (incomingSourceNodes.length > 0) {
+                                if (incomingSourceNodes.length > 0 || (csvData && csvConfig.metrics && csvConfig.metrics.length > 0) || node.metrics.length > 0) {
                                     let resolved = dm.expression || '';
                                     resolved = resolved.replace(/(\w+)\.(\w+)/g, (match, identifier, key) => {
                                         const sourceNode = sourceRefMap[identifier];
@@ -3892,14 +3921,37 @@
                                                 ⚠ Referenced node(s) disconnected: {disconnectedRefs.join(', ')}
                                             </div>
                                         )}
-                                        {incomingSourceNodes.length === 0 && (
+                                        {incomingSourceNodes.length === 0 && !csvData && !node.metrics.length && (
                                             <div style={{ fontSize: '11px', color: '#e63946', marginBottom: '8px', padding: '4px 8px', background: '#fff0f0', borderRadius: '6px' }}>
-                                                ⚠ No source nodes connected
+                                                ⚠ No source nodes connected and no metrics defined
                                             </div>
                                         )}
-                                        {incomingSourceNodes.length > 0 && (
+                                        {((csvData && csvConfig.metrics && csvConfig.metrics.length > 0) || node.metrics.length > 0 || incomingSourceNodes.length > 0) && (
                                             <div className="var-hint" style={{ marginBottom: '8px', maxHeight: '120px', overflowY: 'auto' }}>
                                                 <strong>Available metrics:</strong><br />
+                                                {/* Self reference - show node's own metrics */}
+                                                {((csvData && csvConfig.metrics && csvConfig.metrics.length > 0) || node.metrics.length > 0) && (
+                                                    <div style={{ marginBottom: incomingSourceNodes.length > 0 ? '6px' : '0' }}>
+                                                        <em style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                                            This node (self):
+                                                        </em><br />
+                                                        {/* Show CSV metrics */}
+                                                        {csvData && csvConfig.metrics && csvConfig.metrics.map((m, mi) => (
+                                                            <span key={`csv-${mi}`}>
+                                                                <code>self.{m.key || '?'}</code>
+                                                                {mi < csvConfig.metrics.length - 1 || node.metrics.length > 0 ? ', ' : ''}
+                                                            </span>
+                                                        ))}
+                                                        {/* Show manual metrics */}
+                                                        {node.metrics.map((m, mi) => (
+                                                            <span key={`manual-${mi}`}>
+                                                                <code>self.{m.key || '?'}</code>
+                                                                {mi < node.metrics.length - 1 ? ', ' : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {/* Source node metrics */}
                                                 {incomingSourceNodes.map((sourceNode, si) => {
                                                     const sanitized = sanitizeLabel(sourceNode.label);
                                                     const finalLabel = sourceRefMap[sanitized] === sourceNode
@@ -3963,9 +4015,13 @@
                                                     newDerived[i] = { ...dm, expression: e.target.value };
                                                     onUpdate({ derivedMetrics: newDerived });
                                                 }}
-                                                placeholder={incomingSourceNodes.length > 1
-                                                    ? "e.g. facebook_ads.lead_count + google_ads.lead_count"
-                                                    : "e.g. source.lead_count * 0.05"}
+                                                placeholder={
+                                                    (csvData && csvConfig.metrics && csvConfig.metrics.length > 0)
+                                                        ? "e.g. self.sum_revenue / self.count_orders"
+                                                        : incomingSourceNodes.length > 1
+                                                            ? "e.g. facebook_ads.lead_count + google_ads.lead_count"
+                                                            : "e.g. source.lead_count * 0.05"
+                                                }
                                                 style={{ minHeight: '60px' }}
                                             />
                                         </div>

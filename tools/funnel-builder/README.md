@@ -9,7 +9,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
 - **Global Filter Nodes** — Apply scenario-wide filters that affect all CSV data across every node on the canvas. Set conditions like "Country = US" or "Date > 2024-01-01" once, and all nodes automatically use the filtered dataset. Multiple global filters combine with AND logic.
 - **Stream Filter Nodes** — Apply flow-based filters that only affect downstream connected nodes. Unlike global filters (which affect all nodes), stream filters create scoped filtering pipelines where different branches of your funnel can have different filter contexts.
-- **Multi-Source Derived Metrics** — Create metrics on a node that are computed from metrics of **any or all** upstream (source) nodes. Build true data pipelines where values flow through your funnel. A single expression can combine metrics from multiple source nodes (e.g., `facebook_ads.leads + google_ads.leads`).
+- **Multi-Source Derived Metrics** — Create metrics on a node that are computed from metrics of **any or all** upstream (source) nodes, or even the node's **own metrics** (self-referencing). Build true data pipelines where values flow through your funnel. A single expression can combine metrics from multiple source nodes (e.g., `facebook_ads.leads + google_ads.leads`) or calculate internal fields (e.g., `self.sum_revenue / self.count_orders`).
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
 - **Edge Calculations** — Add custom formulas to connections. Expressions reference source and target metrics using `source.<key>` and `target.<key>` syntax. Results are displayed live on the connection label.
@@ -117,6 +117,9 @@ Configure aggregations to compute metrics from your filtered data:
 6. The **computed value** updates live as you change filters or aggregation settings.
 
 CSV metrics are computed on the client side and appear on your node alongside any manual metrics.
+
+> [!TIP]
+> You can combine multiple CSV metrics using **Derived Metrics** (see below) to create calculated fields like "Average Order Value" using the `self` keyword (e.g., `self.total_revenue / self.total_orders`).
 
 ### Example Use Case
 
@@ -439,19 +442,27 @@ Choose **Stream Filter** when:
 
 Derived Metrics allow you to create true data pipelines where metric values flow from upstream (source) nodes to downstream (target) nodes. Unlike edge calculations (which only display results on the connection), derived metrics become **first-class metrics on the target node** — available for display, downstream calculations, and further derivation.
 
+Additionally, nodes with CSV data can use derived metrics to create **internal calculated fields** by referencing their own metrics, even without any incoming connections.
+
 ### How It Works
 
-When a node has incoming connections (edges), you can define **Derived Metrics** that compute values based on **any or all** connected source nodes' metrics. The computation follows topological order, so derived metrics can reference other derived metrics in a chain.
+When a node has incoming connections (edges) **or** has a CSV file loaded with configured metrics, you can define **Derived Metrics** that compute values based on:
+1. **Source nodes**: Metrics from any or all connected upstream nodes.
+2. **Current node (self)**: The node's own CSV-aggregated or manual metrics.
+
+The computation follows topological order, so derived metrics can reference other derived metrics in a chain.
 
 ### Creating a Derived Metric
 
-1. **Connect nodes**: Create edges from one or more source nodes to your target node.
-2. **Select the target node**: Click the target node to open the properties panel.
-3. **Add a Derived Metric**: In the "Derived Metrics" section (which appears when the node has incoming edges), click **"+ Add Derived Metric"**.
-4. **Configure the metric**:
+1. **Connect nodes** (optional): Create edges from one or more source nodes to your target node.
+2. **Upload CSV** (optional): Configure CSV metrics on the node.
+3. **Select the target node**: Click the node to open the properties panel.
+4. **Add a Derived Metric**: In the "Derived Metrics" section, click **"+ Add Derived Metric"**.
+   - *Note: This section appears if the node has incoming edges OR if it has CSV metrics defined.*
+5. **Configure the metric**:
    - **Key**: A unique identifier for the metric (e.g., `total_leads`).
    - **Label**: Display name (e.g., "Total Leads from All Sources").
-   - **Expression**: Formula referencing metrics from any connected source node using `<node_label>.<metric_key>` syntax.
+   - **Expression**: Formula referencing metrics using `<node_label>.<metric_key>` or `self.<metric_key>`.
    - **Computed Value**: Shows the live result (read-only).
 
 ### Expression Syntax
@@ -462,6 +473,7 @@ Derived metric expressions reference source nodes using **sanitized versions of 
 |--------|---------|
 | `facebook_ads.lead_count` | Metric `lead_count` from the source node labeled "Facebook Ads" |
 | `google_ads.revenue` | Metric `revenue` from the source node labeled "Google Ads" |
+| `self.lead_count` | Metric `lead_count` from the **current node** (internal calculation) |
 | `source.lead_count` | **Shorthand** — only works when there's exactly **one** incoming source node |
 
 **Label Sanitization Rules:**
@@ -540,14 +552,31 @@ This demonstrates:
 - Referencing different metrics from different source nodes
 - Using derived metrics in subsequent derived metric expressions
 
+### Example 4: Internal Calculated Fields (Self-Referencing)
+
+```
+Node: Sales Data (CSV Metrics)
+├─ sum_revenue = 50000
+├─ count_orders = 1000
+
+    [Internal Derived Metric]
+    ├─ aov = self.sum_revenue / self.count_orders → 50
+```
+
+In this example:
+- The node uses the `self` keyword to combine its own CSV-aggregated metrics.
+- No incoming connections are required to use `self` references.
+- These internal calculated fields can then flow downstream to other nodes.
+
 ### Advanced Features
 
-- **Multi-Source Expressions**: A single derived metric expression can reference metrics from **any or all** connected upstream nodes.
+- **Self-Referencing**: Use `self.<key>` to reference the node's own CSV and manual metrics.
+- **Multi-Source Expressions**: A single derived metric expression can reference metrics from **any or all** connected upstream nodes, as well as `self`.
 - **Mixed Metric Types**: Derived metrics, CSV metrics, and manual metrics all coexist on the same node.
 - **Cycle Detection**: If a circular dependency is detected (A → B → A), the tool prevents infinite loops and shows a warning.
-- **Disconnection Warnings**: If an edge is deleted and a derived metric still references the disconnected node, a warning badge appears showing which references are broken. The metric is not auto-deleted (you can reconnect it later or update the expression).
+- **Disconnection Warnings**: If an edge is deleted and a derived metric still references the disconnected node, a warning badge appears showing which references are broken. Note that `self` references are always considered valid if the node has the corresponding metric.
 - **Topological Computation**: Metrics are computed in dependency order automatically, so complex chains always resolve correctly.
-- **Backward Compatibility**: Old saved funnels using the previous single-source format are automatically migrated to the new multi-source syntax on load.
+- **Backward Compatibility**: Old saved funnels using the previous single-source format are automatically migrated to the new multi-source syntax on load. Existing expressions are unaffected.
 
 ### Important Notes
 
