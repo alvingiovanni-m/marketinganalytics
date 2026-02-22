@@ -359,6 +359,96 @@
             }
         }
 
+        /* === Global Filter Node === */
+        .global-filter-node {
+            position: absolute;
+            width: 220px;
+            background: linear-gradient(135deg, #fff5e6 0%, #ffffff 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            box-shadow: var(--node-shadow);
+            cursor: grab;
+            user-select: none;
+            z-index: 2;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .global-filter-node:hover {
+            border-color: #d97706;
+        }
+
+        .global-filter-node.selected {
+            border-color: #f59e0b;
+            box-shadow: 0 2px 12px rgba(245, 158, 11, 0.3);
+        }
+
+        .global-filter-node.dragging {
+            cursor: grabbing;
+            z-index: 10;
+            opacity: 0.92;
+        }
+
+        .global-filter-header {
+            padding: 10px 14px 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #78350f;
+            border-bottom: 1px solid #fed7aa;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .global-filter-header svg {
+            width: 16px;
+            height: 16px;
+            stroke: #f59e0b;
+        }
+
+        .global-filter-body {
+            padding: 8px 14px 10px;
+        }
+
+        .global-filter-summary {
+            font-size: 11px;
+            color: #78350f;
+            padding: 4px 8px;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: 6px;
+            margin-bottom: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+        }
+
+        .global-filter-summary-label {
+            font-weight: 600;
+        }
+
+        .global-filter-summary-operator {
+            color: #92400e;
+            font-weight: 500;
+        }
+
+        .global-filter-summary-value {
+            font-weight: 600;
+            color: #78350f;
+        }
+
+        .global-filter-no-filters {
+            font-size: 11px;
+            color: #92400e;
+            font-style: italic;
+            padding: 4px 0;
+        }
+
+        .global-filter-count {
+            font-size: 10px;
+            color: #92400e;
+            padding: 4px 0;
+            font-weight: 500;
+        }
+
         /* === Edge Labels === */
         .edge-label-container {
             position: absolute;
@@ -1309,13 +1399,23 @@
             }
         }
 
-        function computeNodeMetrics(csvData, csvConfig) {
+        // Collect all global filters from global-filter nodes
+        function collectGlobalFilters(nodes) {
+            return nodes
+                .filter(node => node.type === 'global-filter')
+                .flatMap(node => node.globalFilters || []);
+        }
+
+        function computeNodeMetrics(csvData, csvConfig, preFilteredRows) {
             if (!csvData || !csvConfig || !csvConfig.metrics || csvConfig.metrics.length === 0) {
                 return [];
             }
 
-            // Apply filters first
-            const filteredRows = applyFilters(csvData.rows, csvConfig.filters || []);
+            // Use pre-filtered rows if provided, otherwise use all rows
+            const baseRows = preFilteredRows !== undefined ? preFilteredRows : csvData.rows;
+
+            // Apply per-node filters on top of global filters
+            const filteredRows = applyFilters(baseRows, csvConfig.filters || []);
 
             // Compute each metric
             return csvConfig.metrics.map(metricDef => {
@@ -1391,6 +1491,11 @@
                                     });
                                 }
 
+                                // Ensure type field exists (default to 'node' for backward compatibility)
+                                if (!migratedNode.type) {
+                                    migratedNode.type = 'node';
+                                }
+
                                 return migratedNode;
                             });
                             setNodes(migratedNodes);
@@ -1446,11 +1551,26 @@
             const addNode = useCallback((x, y) => {
                 const node = {
                     id: genId('node'),
+                    type: 'node',
                     label: 'New Node',
                     position: { x: snapToGrid(x), y: snapToGrid(y) },
                     metrics: [],
                     color: 0,
                     derivedMetrics: [],
+                };
+                setNodes(prev => [...prev, node]);
+                setSelectedNodeId(node.id);
+                setSelectedEdgeId(null);
+            }, []);
+
+            const addGlobalFilterNode = useCallback((x, y) => {
+                const node = {
+                    id: genId('global-filter'),
+                    type: 'global-filter',
+                    label: 'Global Filter',
+                    position: { x: snapToGrid(x), y: snapToGrid(y) },
+                    color: 3, // Use a distinct color for global filter nodes
+                    globalFilters: [],
                 };
                 setNodes(prev => [...prev, node]);
                 setSelectedNodeId(node.id);
@@ -1470,8 +1590,30 @@
             const duplicateNode = useCallback((id) => {
                 const source = nodes.find(n => n.id === id);
                 if (!source) return;
+
+                // Handle global filter nodes differently
+                if (source.type === 'global-filter') {
+                    const newNode = {
+                        id: genId('global-filter'),
+                        type: 'global-filter',
+                        label: source.label + ' (copy)',
+                        position: {
+                            x: snapToGrid(source.position.x + 40),
+                            y: snapToGrid(source.position.y + 40),
+                        },
+                        color: source.color,
+                        globalFilters: (source.globalFilters || []).map(f => ({ ...f })),
+                    };
+                    setNodes(prev => [...prev, newNode]);
+                    setSelectedNodeId(newNode.id);
+                    setSelectedEdgeId(null);
+                    return;
+                }
+
+                // Regular node duplication
                 const newNode = {
                     id: genId('node'),
+                    type: source.type || 'node',
                     label: source.label + ' (copy)',
                     position: {
                         x: snapToGrid(source.position.x + 40),
@@ -1602,17 +1744,28 @@
 
             // ---- Connection flow ----
             const startConnection = useCallback((nodeId) => {
+                // Prevent connections from global filter nodes
+                const node = nodes.find(n => n.id === nodeId);
+                if (node && node.type === 'global-filter') {
+                    return;
+                }
                 setConnecting({ fromId: nodeId });
                 setSelectedNodeId(null);
                 setSelectedEdgeId(null);
-            }, []);
+            }, [nodes]);
 
             const endConnection = useCallback((nodeId) => {
+                // Prevent connections to global filter nodes
+                const targetNode = nodes.find(n => n.id === nodeId);
+                if (targetNode && targetNode.type === 'global-filter') {
+                    setConnecting(null);
+                    return;
+                }
                 if (connecting && connecting.fromId !== nodeId) {
                     addEdge(connecting.fromId, nodeId);
                 }
                 setConnecting(null);
-            }, [connecting, addEdge]);
+            }, [connecting, addEdge, nodes]);
 
             // ---- Import/Export ----
             const exportJSON = useCallback(() => {
@@ -1633,7 +1786,18 @@
                 reader.onload = (ev) => {
                     try {
                         const data = JSON.parse(ev.target.result);
-                        if (data.nodes) setNodes(data.nodes);
+                        // Apply backward compatibility migrations
+                        if (data.nodes) {
+                            const migratedNodes = data.nodes.map(node => {
+                                const migrated = { ...node };
+                                // Ensure type field exists (default to 'node' for backward compatibility)
+                                if (!migrated.type) {
+                                    migrated.type = 'node';
+                                }
+                                return migrated;
+                            });
+                            setNodes(migratedNodes);
+                        }
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         setSelectedNodeId(null);
@@ -1727,10 +1891,21 @@
 
             // ---- Compute effective metrics for nodes with CSV config ----
             const nodesWithComputedMetrics = useMemo(() => {
-                // Step 1: Compute CSV metrics for all nodes (existing logic)
+                // Step 0: Collect and apply global filters
+                const globalFilters = collectGlobalFilters(nodes);
+                const globallyFilteredRows = csvData && globalFilters.length > 0
+                    ? applyFilters(csvData.rows, globalFilters)
+                    : (csvData ? csvData.rows : []);
+
+                // Step 1: Compute CSV metrics for all nodes (using globally filtered rows)
                 const nodesWithCSV = nodes.map(node => {
+                    // Skip global filter nodes - they don't have CSV metrics
+                    if (node.type === 'global-filter') {
+                        return node;
+                    }
+
                     if (csvData && node.csvConfig && node.csvConfig.metrics && node.csvConfig.metrics.length > 0) {
-                        const csvMetrics = computeNodeMetrics(csvData, node.csvConfig);
+                        const csvMetrics = computeNodeMetrics(csvData, node.csvConfig, globallyFilteredRows);
                         return { ...node, metrics: [...csvMetrics, ...(node.metrics || [])] };
                     }
                     return node;
@@ -1802,6 +1977,18 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                             Add Node
                         </button>
+                        {csvData && (
+                            <button className="toolbar-btn" onClick={() => {
+                                const rect = viewportRef.current.getBoundingClientRect();
+                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                addGlobalFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                            }} title="Add Global Filter (applies to all nodes)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 4h18M7 9h10M10 14h4M12 19h.01" />
+                                </svg>
+                                Add Global Filter
+                            </button>
+                        )}
                         <div className="toolbar-sep" />
                         <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
                         <button className="toolbar-btn" onClick={exportJSON}>Export</button>
@@ -1920,19 +2107,34 @@
                             })}
 
                             {/* Nodes */}
-                            {nodesWithComputedMetrics.map(node => (
-                                <FunnelNode
-                                    key={node.id}
-                                    node={node}
-                                    isSelected={node.id === selectedNodeId}
-                                    connecting={connecting}
-                                    viewportZoom={viewport.zoom}
-                                    onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
-                                    onMove={(pos) => updateNode(node.id, { position: pos })}
-                                    onStartConnection={() => startConnection(node.id)}
-                                    onEndConnection={() => endConnection(node.id)}
-                                />
-                            ))}
+                            {nodesWithComputedMetrics.map(node => {
+                                if (node.type === 'global-filter') {
+                                    return (
+                                        <GlobalFilterNode
+                                            key={node.id}
+                                            node={node}
+                                            isSelected={node.id === selectedNodeId}
+                                            viewportZoom={viewport.zoom}
+                                            csvData={csvData}
+                                            onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
+                                            onMove={(pos) => updateNode(node.id, { position: pos })}
+                                        />
+                                    );
+                                }
+                                return (
+                                    <FunnelNode
+                                        key={node.id}
+                                        node={node}
+                                        isSelected={node.id === selectedNodeId}
+                                        connecting={connecting}
+                                        viewportZoom={viewport.zoom}
+                                        onSelect={() => { setSelectedNodeId(node.id); setSelectedEdgeId(null); }}
+                                        onMove={(pos) => updateNode(node.id, { position: pos })}
+                                        onStartConnection={() => startConnection(node.id)}
+                                        onEndConnection={() => endConnection(node.id)}
+                                    />
+                                );
+                            })}
                         </div>
 
                         {nodes.length === 0 && (
@@ -1948,11 +2150,24 @@
                     {(selectedNode || selectedEdge) && (
                         <div className="panel-overlay">
                             <div className="panel-header">
-                                <span className="panel-title">{selectedNode ? 'Node Properties' : 'Edge Properties'}</span>
+                                <span className="panel-title">
+                                    {selectedNode
+                                        ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties' : 'Node Properties')
+                                        : 'Edge Properties'}
+                                </span>
                                 <button className="panel-close" onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}>&times;</button>
                             </div>
                             <div className="panel-body">
-                                {selectedNode && (
+                                {selectedNode && selectedNode.type === 'global-filter' && (
+                                    <GlobalFilterEditor
+                                        node={selectedNode}
+                                        csvData={csvData}
+                                        onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                                        onDelete={() => deleteNode(selectedNode.id)}
+                                        onDuplicate={() => duplicateNode(selectedNode.id)}
+                                    />
+                                )}
+                                {selectedNode && selectedNode.type !== 'global-filter' && (
                                     <NodeEditor
                                         node={selectedNode}
                                         csvData={csvData}
@@ -1999,6 +2214,94 @@
         // ========================
         // FunnelNode Component
         // ========================
+        function GlobalFilterNode({ node, isSelected, viewportZoom, onSelect, onMove, csvData }) {
+            const [isDragging, setIsDragging] = useState(false);
+
+            const handleMouseDown = useCallback((e) => {
+                e.stopPropagation();
+                onSelect();
+
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...node.position };
+                let currentPos = { ...startPos };
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+                    currentPos = {
+                        x: startPos.x + dx,
+                        y: startPos.y + dy,
+                    };
+                    onMove(currentPos);
+                }
+                function handleUp() {
+                    setIsDragging(false);
+                    onMove({
+                        x: snapToGrid(currentPos.x),
+                        y: snapToGrid(currentPos.y),
+                    });
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [node.position, viewportZoom, onSelect, onMove]);
+
+            // Calculate row count
+            const totalRows = csvData ? csvData.rows.length : 0;
+            const filteredRows = csvData && node.globalFilters && node.globalFilters.length > 0
+                ? applyFilters(csvData.rows, node.globalFilters).length
+                : totalRows;
+
+            const operatorLabels = {
+                equals: '=',
+                not_equals: '≠',
+                contains: '~',
+                greater_than: '>',
+                less_than: '<',
+            };
+
+            return (
+                <div
+                    className={`global-filter-node${isSelected ? ' selected' : ''}${isDragging ? ' dragging' : ''}`}
+                    style={{
+                        left: node.position.x,
+                        top: node.position.y,
+                    }}
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="global-filter-header">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 4h18M7 9h10M10 14h4M12 19h.01" />
+                        </svg>
+                        {node.label}
+                    </div>
+                    <div className="global-filter-body">
+                        {!node.globalFilters || node.globalFilters.length === 0 ? (
+                            <div className="global-filter-no-filters">No filters configured</div>
+                        ) : (
+                            <>
+                                {node.globalFilters.map((filter, i) => (
+                                    <div key={i} className="global-filter-summary">
+                                        <span className="global-filter-summary-label">{filter.column}</span>
+                                        <span className="global-filter-summary-operator">{operatorLabels[filter.operator] || filter.operator}</span>
+                                        <span className="global-filter-summary-value">"{filter.value}"</span>
+                                    </div>
+                                ))}
+                                {csvData && (
+                                    <div className="global-filter-count">
+                                        {filteredRows} of {totalRows} rows match
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         function FunnelNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection }) {
             const [isDragging, setIsDragging] = useState(false);
             const colorDef = NODE_COLORS[node.color || 0] || NODE_COLORS[0];
@@ -2090,6 +2393,129 @@
         // ========================
         // NodeEditor Component
         // ========================
+        function GlobalFilterEditor({ node, csvData, onUpdate, onDelete, onDuplicate }) {
+            const globalFilters = node.globalFilters || [];
+
+            // Helper to get distinct values for a column
+            const getDistinctValues = (column) => {
+                if (!csvData) return [];
+                const values = csvData.rows.map(row => row[column]).filter(v => v);
+                return [...new Set(values)].slice(0, 20); // Limit to 20 for performance
+            };
+
+            // Helper to count globally filtered rows
+            const getGlobalFilteredRowCount = () => {
+                if (!csvData) return 0;
+                if (globalFilters.length === 0) return csvData.rows.length;
+                return applyFilters(csvData.rows, globalFilters).length;
+            };
+
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Label</div>
+                        <div className="panel-field">
+                            <input
+                                value={node.label}
+                                onChange={e => onUpdate({ label: e.target.value })}
+                                placeholder="Global Filter label..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* Global Filters Section */}
+                    {csvData && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Global Filters</div>
+                            <div style={{ fontSize: '11px', color: '#92400e', marginBottom: '8px', fontWeight: 500 }}>
+                                {getGlobalFilteredRowCount()} of {csvData.rows.length} rows match globally
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px', fontStyle: 'italic' }}>
+                                These filters apply to all nodes on the canvas.
+                            </div>
+                            {globalFilters.map((filter, i) => (
+                                <div key={i} className="metric-card filter-card">
+                                    <div className="metric-card-header">
+                                        <span className="metric-card-title">Filter {i + 1}</span>
+                                        <button className="metric-delete-btn" onClick={() => {
+                                            const filters = [...globalFilters];
+                                            filters.splice(i, 1);
+                                            onUpdate({ globalFilters: filters });
+                                        }}>&times;</button>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Column</label>
+                                        <select
+                                            value={filter.column || ''}
+                                            onChange={e => {
+                                                const filters = [...globalFilters];
+                                                filters[i] = { ...filter, column: e.target.value };
+                                                onUpdate({ globalFilters: filters });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="">-- Select column --</option>
+                                            {csvData.headers.map((h, idx) => (
+                                                <option key={idx} value={h}>{csvData.rawHeaders[idx]}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Operator</label>
+                                        <select
+                                            value={filter.operator || 'equals'}
+                                            onChange={e => {
+                                                const filters = [...globalFilters];
+                                                filters[i] = { ...filter, operator: e.target.value };
+                                                onUpdate({ globalFilters: filters });
+                                            }}
+                                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', fontFamily: 'inherit', border: '1px solid var(--input-border)', borderRadius: '8px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="equals">Equals</option>
+                                            <option value="not_equals">Not Equals</option>
+                                            <option value="contains">Contains</option>
+                                            <option value="greater_than">Greater Than</option>
+                                            <option value="less_than">Less Than</option>
+                                        </select>
+                                    </div>
+                                    <div className="panel-field">
+                                        <label>Value</label>
+                                        <input
+                                            value={filter.value || ''}
+                                            onChange={e => {
+                                                const filters = [...globalFilters];
+                                                filters[i] = { ...filter, value: e.target.value };
+                                                onUpdate({ globalFilters: filters });
+                                            }}
+                                            list={`global-filter-values-${i}`}
+                                            placeholder="Filter value..."
+                                        />
+                                        {filter.column && (
+                                            <datalist id={`global-filter-values-${i}`}>
+                                                {getDistinctValues(filter.column).map((v, idx) => (
+                                                    <option key={idx} value={v} />
+                                                ))}
+                                            </datalist>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            <button className="add-btn" onClick={() => {
+                                onUpdate({ globalFilters: [...globalFilters, { column: '', operator: 'equals', value: '' }] });
+                            }}>
+                                + Add Filter
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="panel-section">
+                        <button className="panel-btn danger" onClick={onDelete}>Delete Global Filter</button>
+                        <button className="panel-btn" onClick={onDuplicate}>Duplicate</button>
+                    </div>
+                </div>
+            );
+        }
+
         function NodeEditor({ node, csvData, edges, allNodes, onUpdate, onDelete, onDuplicate }) {
             const csvConfig = node.csvConfig || { filters: [], metrics: [] };
             const derivedMetrics = node.derivedMetrics || [];

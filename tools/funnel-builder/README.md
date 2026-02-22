@@ -7,6 +7,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Add/Remove Nodes** — Double-click the canvas or use the toolbar button to create nodes. Each node has a label and any number of custom metrics (key, label, value).
 - **Duplicate Nodes** — Clone an existing node with all its properties (metrics, color, CSV configuration) using the "Duplicate Node" button in the properties panel or the `Ctrl+D` / `Cmd+D` keyboard shortcut.
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
+- **Global Filter Nodes** — Apply scenario-wide filters that affect all CSV data across every node on the canvas. Set conditions like "Country = US" or "Date > 2024-01-01" once, and all nodes automatically use the filtered dataset. Multiple global filters combine with AND logic.
 - **Multi-Source Derived Metrics** — Create metrics on a node that are computed from metrics of **any or all** upstream (source) nodes. Build true data pipelines where values flow through your funnel. A single expression can combine metrics from multiple source nodes (e.g., `facebook_ads.leads + google_ads.leads`).
 - **Drag & Position** — Freely drag nodes on an infinite, pannable canvas. Nodes snap to a grid on release.
 - **Connect Nodes** — Click a node's output port (right side) then click another node's input port (left side) or click the node body to draw a connection arrow.
@@ -101,6 +102,94 @@ Email Campaign,800,0.50,5.5
 - **Clear CSV**: Click the "×" button next to the CSV indicator in the toolbar to remove the loaded CSV data.
 - **Manual Metrics**: You can still add manual metrics in the "Additional Metrics" section — they work alongside CSV metrics.
 - **Persistence**: CSV data, filters, and metric configurations are saved to localStorage and included in JSON exports.
+
+## Global Filter Nodes
+
+Global Filter Nodes allow you to apply scenario-wide filters that affect **all CSV data** across every node on the canvas. Unlike per-node filters (which only affect the specific node they're configured on), global filters are applied **before** any per-node filtering or aggregation happens.
+
+### When to Use Global Filters
+
+Use Global Filter Nodes when you want to:
+- **Analyze specific scenarios**: Filter to a particular country, date range, or campaign across all nodes at once
+- **Compare time periods**: Switch between different time ranges without reconfiguring every node
+- **Focus on segments**: Filter to specific customer segments, product categories, or regions globally
+- **Simplify complex funnels**: Instead of duplicating the same filter on 10 nodes, set it once globally
+
+### Creating a Global Filter Node
+
+1. **Upload CSV data first**: Global filters only appear when CSV data is loaded.
+2. **Click "Add Global Filter"** in the toolbar (appears next to "Add Node" when CSV is loaded).
+3. **Position the node**: The global filter node appears in the center of your canvas with an amber/orange theme to distinguish it from regular nodes.
+4. **Configure filters**: Click the global filter node to open its properties panel and add filter conditions.
+
+### Configuring Global Filters
+
+The Global Filter properties panel has:
+
+- **Label**: Name your global filter (e.g., "2024 Only" or "US Region Filter")
+- **Global Filters section**:
+  - **Column**: Select which CSV column to filter
+  - **Operator**: Choose Equals, Not Equals, Contains, Greater Than, or Less Than
+  - **Value**: Enter the filter value (autocomplete suggestions appear from your data)
+  - **Row count indicator**: Shows how many rows match (e.g., "847 of 1000 rows match globally")
+- **Add Filter button**: Add multiple filter conditions (they combine with AND logic)
+- **Delete / Duplicate buttons**: Remove or copy the global filter node
+
+### How Global Filters Work
+
+**Processing Order:**
+1. **Global filters** are applied to the raw CSV data first
+2. **Per-node filters** are then applied to the globally-filtered dataset
+3. **Aggregations** (SUM, AVG, etc.) are computed on the final filtered rows
+
+**Example:**
+```
+Raw CSV Data: 1000 rows
+
+↓ Global Filter: "Country = US"
+
+Globally Filtered: 300 rows (this dataset is used by all nodes)
+
+↓ Node A Filter: "Product = Shoes"     ↓ Node B Filter: "Product = Hats"
+
+Node A: 150 rows                         Node B: 75 rows
+SUM of Sales = $45,000                   SUM of Sales = $12,000
+```
+
+### Multiple Global Filter Nodes
+
+You can create **multiple** global filter nodes, and their filters combine with **AND** logic (all conditions must match):
+
+- **Global Filter A**: Country = "US"
+- **Global Filter B**: Date > "2024-01-01"
+- **Result**: Only rows where Country is US **AND** Date is after 2024-01-01
+
+This is useful for building complex scenario filters step-by-step.
+
+### Visual Design
+
+Global Filter Nodes are visually distinct:
+- **Amber/orange gradient background** (unlike the white background of regular nodes)
+- **Filter icon** in the header
+- **Filter summaries** displayed on the node body (e.g., "country = US", "date > 2024-01-01")
+- **Row count badge** showing "X of Y rows match"
+- **No connection ports** — global filters don't participate in the data flow graph
+
+### Important Notes
+
+- **No connections**: Global Filter Nodes cannot be connected to other nodes via edges. They affect all nodes globally by filtering the CSV dataset.
+- **CSV required**: The "Add Global Filter" button only appears when CSV data is loaded.
+- **Client-side processing**: All filtering happens in your browser — no data is sent externally.
+- **Persistence**: Global filter nodes and their configurations are saved in localStorage and JSON exports.
+- **Duplication**: You can duplicate global filter nodes using Ctrl+D / Cmd+D.
+- **Deletion**: Deleting a global filter node immediately removes its filtering effect from all nodes.
+
+### Use Cases
+
+1. **Regional Analysis**: Create a global filter for "Region = North America" to analyze only that region's performance across your entire funnel.
+2. **Date Range Comparison**: Set up global filters for different quarters and switch between them to compare performance.
+3. **Campaign Isolation**: Filter to a specific marketing campaign ID to see how it performs across all conversion stages.
+4. **Product Category Focus**: Filter to "Category = Electronics" to analyze just that product line across all metrics.
 
 ## Derived Metrics (Multi-Source Data Input)
 
@@ -234,7 +323,19 @@ This demonstrates:
 {
   "nodes": [
     {
+      "id": "global-filter-1",
+      "type": "global-filter",
+      "label": "2024 US Region",
+      "position": { "x": 96, "y": 200 },
+      "color": 3,
+      "globalFilters": [
+        { "column": "country", "operator": "equals", "value": "US" },
+        { "column": "year", "operator": "equals", "value": "2024" }
+      ]
+    },
+    {
       "id": "node-1",
+      "type": "node",
       "label": "Facebook Ads Funnel",
       "position": { "x": 96, "y": 72 },
       "metrics": [
@@ -254,6 +355,7 @@ This demonstrates:
     },
     {
       "id": "node-2",
+      "type": "node",
       "label": "Converted Leads",
       "position": { "x": 400, "y": 72 },
       "metrics": [
