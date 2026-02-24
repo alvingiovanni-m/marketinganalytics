@@ -6,6 +6,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 
 - **Add/Remove Nodes** — Double-click the canvas or use the toolbar button to create nodes. Each node has a label and any number of custom metrics (key, label, value).
 - **Duplicate Nodes** — Clone an existing node with all its properties (metrics, color, CSV configuration) using the "Duplicate Node" button in the properties panel or the `Ctrl+D` / `Cmd+D` keyboard shortcut.
+- **Undo / Redo** — Full history tracking with 50-level undo stack. Reverse any change with `Cmd+Z` (undo) or `Cmd+Shift+Z` (redo). Works for all operations: add, delete, move, edit, paste, import, and more. Property panel edits are debounced to avoid cluttering history with every keystroke.
 - **Pivot-Table CSV Integration** — Upload a CSV file and configure each node to aggregate data using filters and aggregation functions (SUM, AVG, COUNT, etc.). Analyze your data with powerful pivot-table-like capabilities.
 - **Global Filter Nodes** — Apply scenario-wide filters that affect all CSV data across every node on the canvas. Set conditions like "Country = US" or "Date > 2024-01-01" once, and all nodes automatically use the filtered dataset. Multiple global filters combine with AND logic.
 - **Stream Filter Nodes** — Apply flow-based filters that only affect downstream connected nodes. Unlike global filters (which affect all nodes), stream filters create scoped filtering pipelines where different branches of your funnel can have different filter contexts.
@@ -68,6 +69,61 @@ Select a single object to edit its individual properties.
 - **Template Duplication**: Select a group of related nodes, duplicate them, and create a parallel pipeline.
 - **Quick Cleanup**: Select multiple outdated nodes and delete them in one action.
 - **Batch Copy-Paste**: Copy a complex funnel structure and paste it to create variations.
+
+## Undo / Redo
+
+The Funnel Builder includes full history tracking, allowing you to reverse any accidental changes.
+
+### How It Works
+
+Every canvas mutation is captured in an in-memory undo stack (capped at 50 entries for performance). You can:
+- **Undo** recent changes with `Cmd+Z` (Mac) or `Ctrl+Z` (Windows)
+- **Redo** undone changes with `Cmd+Shift+Z` (Mac) or `Ctrl+Shift+Z` (Windows)
+- Use the **toolbar undo/redo buttons** for visual feedback (disabled when stack is empty)
+
+### What's Tracked
+
+Undo/redo covers all canvas operations:
+- Add, delete, move, or edit nodes
+- Add, delete, or edit connections (edges)
+- Add, delete, move, or edit text labels
+- Multi-object operations (paste, duplicate, bulk delete)
+- Import JSON / Clear canvas
+
+### What's NOT Tracked
+
+- **Viewport** (pan/zoom position) — not tracked to avoid cluttering history
+- **Selection state** — resets to empty on undo/redo
+- **CSV data uploads** — CSV data itself is not versioned, only node configurations
+
+### Smart Debouncing
+
+Property panel text edits (node labels, metric values, etc.) are **debounced** to avoid creating a new undo entry on every keystroke. After 500ms of inactivity, your edits are captured as a single undo entry. This keeps the history stack clean and makes undo/redo more predictable.
+
+### Keyboard Shortcuts
+
+- **Cmd+Z / Ctrl+Z**: Undo last action
+- **Cmd+Shift+Z / Ctrl+Shift+Z**: Redo last undone action
+
+These shortcuts work **everywhere**, even when focused on input fields in the properties panel.
+
+### Toolbar Buttons
+
+The toolbar includes visual undo/redo buttons (circular arrow icons) between the cursor mode toggle and "Add Node" button. These buttons:
+- Show the current state (disabled/grayed when no history)
+- Provide tooltips with keyboard shortcut hints
+- Offer an alternative to keyboard shortcuts for discoverability
+
+### History Stack Limit
+
+The undo stack is limited to **50 entries** to prevent excessive memory usage. The oldest entries are automatically removed when the limit is reached. For most workflows, 50 steps is more than sufficient.
+
+### Important Notes
+
+- **Undo is permanent for the current session**: Once you close the browser tab, history is lost (only the final state is auto-saved to localStorage).
+- **Redo stack clears on new action**: After undoing, if you make any new change, the redo stack is cleared (standard undo tree behavior).
+- **Node dragging**: Dragging a node creates only **one** undo entry (captured at the start of the drag), not one per frame.
+- **Multi-object drag**: Moving multiple selected objects together creates only **one** undo entry.
 
 ## Usage
 
@@ -688,11 +744,15 @@ In this example:
 | Shift+Click | Toggle object in/out of multi-selection |
 | Click + drag (canvas) | Draw selection box to select multiple objects |
 | Shift + drag selection | Add to existing selection with box select |
+| Ctrl+Z / Cmd+Z | Undo last action |
+| Ctrl+Shift+Z / Cmd+Shift+Z | Redo last undone action |
 | Ctrl+C / Cmd+C | Copy selected objects to clipboard |
 | Ctrl+V / Cmd+V | Paste copied objects (with new IDs, offset +40px) |
 | Ctrl+D / Cmd+D | Duplicate selected objects |
 | Delete / Backspace | Delete selected objects |
 | Escape | Cancel connection / clear selection |
+| H | Switch to Hand tool (pan mode) |
+| V | Switch to Select tool (box selection mode) |
 | Spacebar + drag | Pan canvas |
 | Middle-click + drag | Pan canvas |
 | Scroll wheel / 2-finger swipe | Pan canvas |

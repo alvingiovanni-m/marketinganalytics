@@ -1676,6 +1676,7 @@
             const [isPanning, setIsPanning] = useState(false);
             const [confirmAction, setConfirmAction] = useState(null);
             const [csvData, setCsvData] = useState(null);
+            const [, forceUpdate] = useState(0);
             const viewportRef = useRef(null);
             const fileInputRef = useRef(null);
             const csvFileInputRef = useRef(null);
@@ -1687,6 +1688,12 @@
             const viewportStateRef = useRef(viewport);
             const multiDragRef = useRef(null);
 
+            // Undo/Redo history stacks
+            const undoStackRef = useRef([]);
+            const redoStackRef = useRef([]);
+            const debounceTimerRef = useRef(null);
+            const MAX_UNDO_HISTORY = 50;
+
             // Keep refs in sync with state
             useEffect(() => { nodesRef.current = nodes; }, [nodes]);
             useEffect(() => { textLabelsRef.current = textLabels; }, [textLabels]);
@@ -1696,6 +1703,79 @@
             useEffect(() => {
                 multiDragRef.current = null;
             }, [selectedIds]);
+
+            // ---- Undo/Redo Functions ----
+            const pushUndo = useCallback(() => {
+                const snapshot = {
+                    nodes: JSON.parse(JSON.stringify(nodes)),
+                    edges: JSON.parse(JSON.stringify(edges)),
+                    textLabels: JSON.parse(JSON.stringify(textLabels)),
+                };
+                undoStackRef.current.push(snapshot);
+                // Trim stack if it exceeds limit
+                if (undoStackRef.current.length > MAX_UNDO_HISTORY) {
+                    undoStackRef.current.shift();
+                }
+                // Clear redo stack when new mutation occurs
+                redoStackRef.current = [];
+                forceUpdate(v => v + 1);
+            }, [nodes, edges, textLabels]);
+
+            const pushUndoDebounced = useCallback(() => {
+                // Clear existing timer
+                if (debounceTimerRef.current) {
+                    clearTimeout(debounceTimerRef.current);
+                }
+                // Set new timer - capture snapshot after 500ms of inactivity
+                debounceTimerRef.current = setTimeout(() => {
+                    pushUndo();
+                    debounceTimerRef.current = null;
+                }, 500);
+            }, [pushUndo]);
+
+            const undo = useCallback(() => {
+                if (undoStackRef.current.length === 0) return;
+
+                // Save current state to redo stack
+                const currentState = {
+                    nodes: JSON.parse(JSON.stringify(nodes)),
+                    edges: JSON.parse(JSON.stringify(edges)),
+                    textLabels: JSON.parse(JSON.stringify(textLabels)),
+                };
+                redoStackRef.current.push(currentState);
+
+                // Pop and apply snapshot from undo stack
+                const snapshot = undoStackRef.current.pop();
+                setNodes(snapshot.nodes);
+                setEdges(snapshot.edges);
+                setTextLabels(snapshot.textLabels);
+                setSelectedIds([]);
+                forceUpdate(v => v + 1);
+            }, [nodes, edges, textLabels]);
+
+            const redo = useCallback(() => {
+                if (redoStackRef.current.length === 0) return;
+
+                // Save current state to undo stack
+                const currentState = {
+                    nodes: JSON.parse(JSON.stringify(nodes)),
+                    edges: JSON.parse(JSON.stringify(edges)),
+                    textLabels: JSON.parse(JSON.stringify(textLabels)),
+                };
+                undoStackRef.current.push(currentState);
+                // Trim if needed
+                if (undoStackRef.current.length > MAX_UNDO_HISTORY) {
+                    undoStackRef.current.shift();
+                }
+
+                // Pop and apply snapshot from redo stack
+                const snapshot = redoStackRef.current.pop();
+                setNodes(snapshot.nodes);
+                setEdges(snapshot.edges);
+                setTextLabels(snapshot.textLabels);
+                setSelectedIds([]);
+                forceUpdate(v => v + 1);
+            }, [nodes, edges, textLabels]);
 
             // Load from localStorage on mount
             useEffect(() => {
@@ -1778,6 +1858,18 @@
                         spacebarPressedRef.current = true;
                     }
 
+                    // Undo/Redo shortcuts (work even in inputs)
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                        e.preventDefault();
+                        undo();
+                        return;
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+                        e.preventDefault();
+                        redo();
+                        return;
+                    }
+
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                     if (e.key === 'Escape') {
                         setConnecting(null);
@@ -1793,6 +1885,7 @@
                     }
                     if (e.key === 'Delete' || e.key === 'Backspace') {
                         if (selectedIds.length > 0) {
+                            pushUndo();
                             setNodes(prev => prev.filter(n => !selectedIds.includes(n.id)));
                             setEdges(prev => prev.filter(e => !selectedIds.includes(e.from) && !selectedIds.includes(e.to) && !selectedIds.includes(e.id)));
                             setTextLabels(prev => prev.filter(l => !selectedIds.includes(l.id)));
@@ -1817,6 +1910,7 @@
                     if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
                         if (clipboard.nodes.length > 0 || clipboard.textLabels.length > 0) {
                             e.preventDefault();
+                            pushUndo();
                             const newNodeIds = [];
                             const newLabelIds = [];
 
@@ -1874,6 +1968,7 @@
 
             // ---- Node CRUD ----
             const addNode = useCallback((x, y) => {
+                pushUndo();
                 const node = {
                     id: genId('node'),
                     type: 'node',
@@ -1885,9 +1980,10 @@
                 };
                 setNodes(prev => [...prev, node]);
                 setSelectedIds([node.id]);
-            }, []);
+            }, [pushUndo]);
 
             const addGlobalFilterNode = useCallback((x, y) => {
+                pushUndo();
                 const node = {
                     id: genId('global-filter'),
                     type: 'global-filter',
@@ -1898,9 +1994,10 @@
                 };
                 setNodes(prev => [...prev, node]);
                 setSelectedIds([node.id]);
-            }, []);
+            }, [pushUndo]);
 
             const addStreamFilterNode = useCallback((x, y) => {
+                pushUndo();
                 const node = {
                     id: genId('stream-filter'),
                     type: 'stream-filter',
@@ -1911,21 +2008,25 @@
                 };
                 setNodes(prev => [...prev, node]);
                 setSelectedIds([node.id]);
-            }, []);
+            }, [pushUndo]);
 
             const updateNode = useCallback((id, updates) => {
+                pushUndoDebounced();
                 setNodes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
-            }, []);
+            }, [pushUndoDebounced]);
 
             const deleteNode = useCallback((id) => {
+                pushUndo();
                 setNodes(prev => prev.filter(n => n.id !== id));
                 setEdges(prev => prev.filter(e => e.from !== id && e.to !== id));
                 setSelectedIds(prev => prev.filter(pid => pid !== id));
-            }, []);
+            }, [pushUndo]);
 
             const duplicateNode = useCallback((id) => {
                 const source = nodes.find(n => n.id === id);
                 if (!source) return;
+
+                pushUndo();
 
                 // Handle global filter nodes differently
                 if (source.type === 'global-filter') {
@@ -1984,10 +2085,11 @@
                 };
                 setNodes(prev => [...prev, newNode]);
                 setSelectedIds([newNode.id]);
-            }, [nodes]);
+            }, [nodes, pushUndo]);
 
             // ---- Text Label CRUD ----
             const addTextLabel = useCallback((x, y) => {
+                pushUndo();
                 const newLabel = {
                     id: genId('text'),
                     position: { x: snapToGrid(x), y: snapToGrid(y) },
@@ -1998,20 +2100,23 @@
                 };
                 setTextLabels(prev => [...prev, newLabel]);
                 setSelectedIds([newLabel.id]);
-            }, []);
+            }, [pushUndo]);
 
             const updateTextLabel = useCallback((id, updates) => {
+                pushUndoDebounced();
                 setTextLabels(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-            }, []);
+            }, [pushUndoDebounced]);
 
             const deleteTextLabel = useCallback((id) => {
+                pushUndo();
                 setTextLabels(prev => prev.filter(l => l.id !== id));
                 setSelectedIds(prev => prev.filter(pid => pid !== id));
-            }, []);
+            }, [pushUndo]);
 
             const duplicateTextLabel = useCallback((id) => {
                 const source = textLabels.find(l => l.id === id);
                 if (!source) return;
+                pushUndo();
                 const newLabel = {
                     ...source,
                     id: genId('text'),
@@ -2022,13 +2127,14 @@
                 };
                 setTextLabels(prev => [...prev, newLabel]);
                 setSelectedIds([newLabel.id]);
-            }, [textLabels]);
+            }, [textLabels, pushUndo]);
 
             // ---- Edge CRUD ----
             const addEdge = useCallback((fromId, toId) => {
                 if (fromId === toId) return;
                 setEdges(prev => {
                     if (prev.some(e => e.from === fromId && e.to === toId)) return prev;
+                    pushUndo();
                     const edge = {
                         id: genId('edge'),
                         from: fromId,
@@ -2038,16 +2144,18 @@
                     setSelectedIds([edge.id]);
                     return [...prev, edge];
                 });
-            }, []);
+            }, [pushUndo]);
 
             const updateEdge = useCallback((id, updates) => {
+                pushUndoDebounced();
                 setEdges(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
-            }, []);
+            }, [pushUndoDebounced]);
 
             const deleteEdge = useCallback((id) => {
+                pushUndo();
                 setEdges(prev => prev.filter(e => e.id !== id));
                 setSelectedIds(prev => prev.filter(pid => pid !== id));
-            }, []);
+            }, [pushUndo]);
 
             // ---- Canvas helpers ----
             const screenToCanvas = useCallback((clientX, clientY) => {
@@ -2292,6 +2400,7 @@
                 reader.onload = (ev) => {
                     try {
                         const data = JSON.parse(ev.target.result);
+                        pushUndo();
                         // Apply backward compatibility migrations
                         if (data.nodes) {
                             const migratedNodes = data.nodes.map(node => {
@@ -2314,7 +2423,7 @@
                 };
                 reader.readAsText(file);
                 e.target.value = '';
-            }, []);
+            }, [pushUndo]);
 
             const uploadCSV = useCallback((e) => {
                 const file = e.target.files[0];
@@ -2346,6 +2455,7 @@
                     title: 'Clear canvas?',
                     message: 'This will remove all nodes and connections. This cannot be undone.',
                     onConfirm: () => {
+                        pushUndo();
                         setNodes([]);
                         setEdges([]);
                         setTextLabels([]);
@@ -2353,7 +2463,7 @@
                         setConfirmAction(null);
                     },
                 });
-            }, []);
+            }, [pushUndo]);
 
             // ---- Zoom controls ----
             const zoomIn = useCallback(() => {
@@ -2583,6 +2693,31 @@
                             </button>
                         </div>
                         <div className="toolbar-sep" />
+                        <button
+                            className="toolbar-btn"
+                            onClick={undo}
+                            disabled={undoStackRef.current.length === 0}
+                            title="Undo (Cmd+Z)"
+                            style={{ opacity: undoStackRef.current.length === 0 ? 0.4 : 1 }}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 7v6h6" />
+                                <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+                            </svg>
+                        </button>
+                        <button
+                            className="toolbar-btn"
+                            onClick={redo}
+                            disabled={redoStackRef.current.length === 0}
+                            title="Redo (Cmd+Shift+Z)"
+                            style={{ opacity: redoStackRef.current.length === 0 ? 0.4 : 1 }}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 7v6h-6" />
+                                <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7" />
+                            </svg>
+                        </button>
+                        <div className="toolbar-sep" />
                         <button className="toolbar-btn primary" onClick={() => {
                             const rect = viewportRef.current.getBoundingClientRect();
                             const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -2773,6 +2908,7 @@
                                             csvData={csvData}
                                             onSelect={(e) => { handleSelect(node.id, e); }}
                                             onMove={(pos) => handleMultiMove(node.id, pos)}
+                                            onDragStart={pushUndo}
                                         />
                                     );
                                 }
@@ -2790,6 +2926,7 @@
                                             onMove={(pos) => handleMultiMove(node.id, pos)}
                                             onStartConnection={() => startConnection(node.id)}
                                             onEndConnection={() => endConnection(node.id)}
+                                            onDragStart={pushUndo}
                                         />
                                     );
                                 }
@@ -2804,6 +2941,7 @@
                                         onMove={(pos) => handleMultiMove(node.id, pos)}
                                         onStartConnection={() => startConnection(node.id)}
                                         onEndConnection={() => endConnection(node.id)}
+                                        onDragStart={pushUndo}
                                     />
                                 );
                             })}
@@ -2815,6 +2953,7 @@
                                     viewportZoom={viewport.zoom}
                                     onSelect={(e) => { handleSelect(label.id, e); }}
                                     onMove={(pos) => handleMultiMove(label.id, pos)}
+                                    onDragStart={pushUndo}
                                 />
                             ))}
                         </div>
@@ -2937,12 +3076,13 @@
         // ========================
         // FunnelNode Component
         // ========================
-        function GlobalFilterNode({ node, isSelected, viewportZoom, onSelect, onMove, csvData }) {
+        function GlobalFilterNode({ node, isSelected, viewportZoom, onSelect, onMove, csvData, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (onDragStart) onDragStart();
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -3025,7 +3165,7 @@
             );
         }
 
-        function StreamFilterNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, csvData, allNodes }) {
+        function StreamFilterNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, csvData, allNodes, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
@@ -3043,6 +3183,7 @@
 
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (onDragStart) onDragStart();
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -3143,7 +3284,7 @@
             );
         }
 
-        function FunnelNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection }) {
+        function FunnelNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
             const colorDef = NODE_COLORS[node.color || 0] || NODE_COLORS[0];
 
@@ -3162,6 +3303,7 @@
 
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (onDragStart) onDragStart();
 
                 setIsDragging(true);
                 const startX = e.clientX;
@@ -3234,12 +3376,13 @@
         // ========================
         // TextLabel Components
         // ========================
-        function TextLabelNode({ label, isSelected, viewportZoom, onSelect, onMove }) {
+        function TextLabelNode({ label, isSelected, viewportZoom, onSelect, onMove, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (onDragStart) onDragStart();
 
                 setIsDragging(true);
                 const startX = e.clientX;
