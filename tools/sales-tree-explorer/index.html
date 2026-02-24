@@ -125,11 +125,14 @@
         const V_GAP = 14;
         const LINE_CLR = "#3A3F52";
 
-        function TreeNode({ node, metric, metricsMeta, labels, depth = 0, parentValue, expanded, toggleExpand, defaultOpen }) {
+        function TreeNode({ node, metric, metricsMeta, labels, depth = 0, parentValue, firstBranchValue, expanded, toggleExpand, defaultOpen }) {
             const hasChildren = node.children && node.children.length > 0;
             const nodeId = `${depth}-${node.label}`;
             const isOpen = expanded[nodeId] !== undefined ? expanded[nodeId] : defaultOpen;
             const pct = parentValue ? ((node.value / parentValue) * 100).toFixed(1) : null;
+            const firstBranchPct = (depth >= 2 && firstBranchValue)
+                ? ((node.value / firstBranchValue) * 100).toFixed(1)
+                : null;
             const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
             const barWidth = parentValue ? Math.max(4, (node.value / parentValue) * 100) : 100;
             const displayLabel = node.label === "true" ? "Yes" : node.label === "false" ? "No" : node.label;
@@ -205,6 +208,7 @@
                                 {fmt(node.value, metric, metricsMeta)}
                             </span>
                             {pct && <span style={{ fontSize: 13, fontWeight: 600, color: "#8B8AA0", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>}
+                            {firstBranchPct && <span style={{ fontSize: 11, fontWeight: 500, color: "#6C5CE7", fontVariantNumeric: "tabular-nums", opacity: 0.7 }}>({firstBranchPct}%)</span>}
                         </div>
                         <div style={{ height: 3, borderRadius: 2, background: color + "33", width: "100%", overflow: "hidden", marginTop: 2 }}>
                             <div style={{ height: "100%", borderRadius: 2, background: color, width: barWidth + "%", transition: "width 0.3s ease" }} />
@@ -222,7 +226,7 @@
                             )}
                             {node.children.map((child, i) => (
                                 <div key={child.label} ref={el => childRefs.current[i] = el}>
-                                    <TreeNode node={child} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={depth + 1} parentValue={node.value} expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
+                                    <TreeNode node={child} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={depth + 1} parentValue={node.value} firstBranchValue={depth === 0 ? child.value : firstBranchValue} expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
                                 </div>
                             ))}
                         </div>
@@ -866,7 +870,7 @@
                                 <div>Try adjusting or clearing your filters</div>
                             </div>
                         ) : (
-                            <TreeNode node={tree} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={0} parentValue={null}
+                            <TreeNode node={tree} metric={metric} metricsMeta={metricsMeta} labels={labels} depth={0} parentValue={null} firstBranchValue={null}
                                 expanded={expanded} toggleExpand={toggleExpand} defaultOpen={defaultOpen} />
                         )}
                     </div>
