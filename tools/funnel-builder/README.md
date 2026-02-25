@@ -19,6 +19,73 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Export / Import JSON** — Save your funnel as a `.json` file and reload it later. Auto-saves to browser localStorage.
 - **Node Colors** — Pick from 6 color presets to categorize your nodes.
 - **Text Box Labels** — Add free-form text on the canvas to annotate your funnels. Customize text size, bold, and italic styling.
+- **Sections & Side Navigation** — Organize your funnel into visual sections (like Figma frames). Sections group objects spatially — when you move a section, all contained objects move with it. Use the side navigation panel to quickly zoom to any section.
+
+## Sections & Side Navigation
+
+Sections are Figma-style visual containers that help you organize large funnels by grouping related nodes and text labels together.
+
+### Creating a Section
+
+1. **Click "Add Section"** in the toolbar (between "Add Text Box" and CSV buttons).
+2. **Position and resize**: Drag the section to position it, and use the **8 resize handles** (corners and edges) to adjust its size.
+3. **Name the section**: Click the section to open the properties panel and edit its label.
+
+### How Sections Work
+
+**Containment Logic:**
+- Objects (nodes and text labels) whose **center point** falls within the section's boundaries are considered "contained"
+- When you **drag a section**, all contained objects move with it automatically
+- When you **resize a section**, only the section boundary changes (contained objects stay in place)
+
+**Visual Design:**
+- Sections appear **behind** all other objects (lowest z-index)
+- Rounded corners with subtle border and background
+- Header label displayed at the top of the section
+- Selected sections show a highlighted border and 8 resize handles
+- Min size: 120×80px to prevent sections from becoming too small
+
+### Side Navigation Panel
+
+The side navigation panel (left side of screen) provides quick access to all sections:
+
+1. **Toggle the panel**: Click the sections icon button (fixed position, left side) to open/close the panel.
+2. **View all sections**: The panel lists all sections by name with an icon.
+3. **Click to zoom**: Click any section name to pan and zoom the canvas to fit that section in view.
+4. **Active indicator**: The currently selected section is highlighted in the list.
+
+### Multi-Select with Sections
+
+Sections participate in all multi-object operations:
+
+- **Box Selection**: Drag a selection box to select sections along with nodes and text labels
+- **Shift+Click**: Toggle sections in/out of multi-selection
+- **Copy/Paste** (`Ctrl+C`, `Ctrl+V`): Copy sections to clipboard and paste with offset
+- **Duplicate** (`Ctrl+D`): Duplicate sections just like other objects
+- **Delete** (`Delete`, `Backspace`): Remove sections (note: contained objects are NOT deleted, only the section itself)
+
+### Properties Panel
+
+When a section is selected, the properties panel shows:
+
+- **Section Name**: Edit the label
+- **Dimensions**: View and edit width and height
+- **Contained Objects**: List of nodes and text labels inside the section
+- **Duplicate / Delete**: Action buttons
+
+### Use Cases
+
+- **Organize by stage**: Create sections for "Awareness", "Consideration", "Conversion"
+- **Group by channel**: Separate Facebook Ads funnel from Google Ads funnel
+- **Document regions**: Use sections to mark different analysis regions
+- **Bulk movement**: Move entire funnel stages together by dragging their section
+
+### Important Notes
+
+- **Sections don't affect data flow**: They're purely visual organizers and don't filter or modify data
+- **Sections persist**: Saved in localStorage and JSON exports
+- **Undo/redo supported**: All section operations are tracked in history
+- **No connections**: Sections don't have ports and can't be connected with edges
 
 ## Multi-Select
 
@@ -650,6 +717,16 @@ In this example:
 
 ```json
 {
+  "sections": [
+    {
+      "id": "section-1",
+      "type": "section",
+      "label": "Acquisition Stage",
+      "position": { "x": 50, "y": 50 },
+      "size": { "width": 400, "height": 300 },
+      "color": 0
+    }
+  ],
   "nodes": [
     {
       "id": "global-filter-1",
@@ -722,6 +799,16 @@ In this example:
           "unit": "%"
         }
       ]
+    }
+  ],
+  "textLabels": [
+    {
+      "id": "text-1",
+      "position": { "x": 100, "y": 400 },
+      "content": "Conversion Funnel Q1 2024",
+      "fontSize": 18,
+      "fontWeight": "bold",
+      "fontStyle": "normal"
     }
   ],
   "csvData": {

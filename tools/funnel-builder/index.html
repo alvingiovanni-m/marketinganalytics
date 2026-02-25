@@ -583,6 +583,228 @@
             font-weight: 500;
         }
 
+        /* === Sections === */
+        .section {
+            position: absolute;
+            z-index: 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 16px;
+            background: rgba(0, 0, 0, 0.02);
+            cursor: grab;
+            user-select: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .section:hover {
+            border-color: #ccc;
+        }
+
+        .section.selected {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+        }
+
+        .section.dragging {
+            cursor: grabbing;
+            opacity: 0.8;
+        }
+
+        .section-header {
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            padding: 8px 14px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.9);
+            border-top-left-radius: 14px;
+            border-top-right-radius: 14px;
+            border-bottom: 1px solid #e8e8e8;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .section-resize-handle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 2px;
+            display: none;
+        }
+
+        .section.selected .section-resize-handle {
+            display: block;
+        }
+
+        .section-resize-handle.handle-n {
+            top: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: ns-resize;
+        }
+
+        .section-resize-handle.handle-s {
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: ns-resize;
+        }
+
+        .section-resize-handle.handle-e {
+            right: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: ew-resize;
+        }
+
+        .section-resize-handle.handle-w {
+            left: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: ew-resize;
+        }
+
+        .section-resize-handle.handle-ne {
+            top: -4px;
+            right: -4px;
+            cursor: nesw-resize;
+        }
+
+        .section-resize-handle.handle-nw {
+            top: -4px;
+            left: -4px;
+            cursor: nwse-resize;
+        }
+
+        .section-resize-handle.handle-se {
+            bottom: -4px;
+            right: -4px;
+            cursor: nwse-resize;
+        }
+
+        .section-resize-handle.handle-sw {
+            bottom: -4px;
+            left: -4px;
+            cursor: nesw-resize;
+        }
+
+        /* === Side Navigation === */
+        .side-nav {
+            position: fixed;
+            left: 0;
+            top: 90px;
+            height: auto;
+            max-height: calc(100vh - 110px);
+            width: 200px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            margin-left: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+            z-index: 90;
+            transform: translateX(calc(-100% - 16px));
+            transition: transform 0.2s ease;
+            overflow: visible;
+        }
+
+        .side-nav.open {
+            transform: translateX(0);
+        }
+
+        .side-nav-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .side-nav-title {
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .side-nav-toggle {
+            position: absolute;
+            right: -38px;
+            top: 8px;
+            z-index: 95;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 0 8px 8px 0;
+            box-shadow: 4px 2px 8px rgba(0, 0, 0, 0.08);
+            cursor: pointer;
+            transition: all 0.15s;
+            color: var(--text-secondary);
+        }
+
+        .side-nav.open .side-nav-toggle {
+            right: 8px;
+            top: 8px;
+            border-radius: 8px;
+            box-shadow: none;
+            background: transparent;
+            border: none;
+        }
+
+        .side-nav-toggle:hover {
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+
+        .side-nav-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .side-nav-body {
+            padding: 8px;
+            overflow-y: auto;
+            height: calc(100% - 60px);
+        }
+
+        .side-nav-item {
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-primary);
+            transition: background 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .side-nav-item:hover {
+            background: var(--input-bg);
+        }
+
+        .side-nav-item.active {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        .side-nav-empty {
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
         /* === Text Labels === */
         .text-label {
             position: absolute;
@@ -1335,6 +1557,82 @@
             return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
         }
 
+        // ========================
+        // Section Containment Logic
+        // ========================
+        // Returns array of IDs of nodes and text labels whose center point falls within the section's bounding box
+        function getObjectsInSection(section, nodes, textLabels) {
+            const contained = [];
+
+            // Check nodes
+            nodes.forEach(node => {
+                const nodeWidth = getNodeWidth(node);
+                const nodeHeight = getNodeHeight(node);
+                const centerX = node.position.x + nodeWidth / 2;
+                const centerY = node.position.y + nodeHeight / 2;
+
+                if (centerX >= section.position.x &&
+                    centerX <= section.position.x + section.size.width &&
+                    centerY >= section.position.y &&
+                    centerY <= section.position.y + section.size.height) {
+                    contained.push(node.id);
+                }
+            });
+
+            // Check text labels (estimate dimensions as 100x30)
+            textLabels.forEach(label => {
+                const labelWidth = 100;
+                const labelHeight = 30;
+                const centerX = label.position.x + labelWidth / 2;
+                const centerY = label.position.y + labelHeight / 2;
+
+                if (centerX >= section.position.x &&
+                    centerX <= section.position.x + section.size.width &&
+                    centerY >= section.position.y &&
+                    centerY <= section.position.y + section.size.height) {
+                    contained.push(label.id);
+                }
+            });
+
+            return contained;
+        }
+
+        // Returns the section that contains the given object (if any)
+        function getSectionForObject(objectId, sections, nodes, textLabels) {
+            // Find the object
+            const node = nodes.find(n => n.id === objectId);
+            const label = textLabels.find(l => l.id === objectId);
+
+            if (!node && !label) return null;
+
+            // Calculate object center
+            let centerX, centerY;
+            if (node) {
+                const nodeWidth = getNodeWidth(node);
+                const nodeHeight = getNodeHeight(node);
+                centerX = node.position.x + nodeWidth / 2;
+                centerY = node.position.y + nodeHeight / 2;
+            } else {
+                const labelWidth = 100;
+                const labelHeight = 30;
+                centerX = label.position.x + labelWidth / 2;
+                centerY = label.position.y + labelHeight / 2;
+            }
+
+            // Find the first section that contains this center point
+            // (If there are overlapping sections, the first one in the array wins)
+            for (const section of sections) {
+                if (centerX >= section.position.x &&
+                    centerX <= section.position.x + section.size.width &&
+                    centerY >= section.position.y &&
+                    centerY <= section.position.y + section.size.height) {
+                    return section;
+                }
+            }
+
+            return null;
+        }
+
         // Topological sort for computing derived metrics in dependency order
         function topologicalSort(nodes, edges) {
             const nodeIds = nodes.map(n => n.id);
@@ -1656,11 +1954,12 @@
             const [nodes, setNodes] = useState([]);
             const [edges, setEdges] = useState([]);
             const [textLabels, setTextLabels] = useState([]);
+            const [sections, setSections] = useState([]);
 
             const [selectedIds, setSelectedIds] = useState([]);
             const [selectionBox, setSelectionBox] = useState(null);
             const [cursorMode, setCursorMode] = useState('hand'); // 'hand' | 'select'
-            const [clipboard, setClipboard] = useState({ nodes: [], textLabels: [] });
+            const [clipboard, setClipboard] = useState({ nodes: [], textLabels: [], sections: [] });
 
             const handleSelect = useCallback((id, e) => {
                 if (e && e.shiftKey) {
@@ -1676,6 +1975,7 @@
             const [isPanning, setIsPanning] = useState(false);
             const [confirmAction, setConfirmAction] = useState(null);
             const [csvData, setCsvData] = useState(null);
+            const [sideNavOpen, setSideNavOpen] = useState(false);
             const [, forceUpdate] = useState(0);
             const viewportRef = useRef(null);
             const fileInputRef = useRef(null);
@@ -1685,6 +1985,7 @@
             const spacebarPressedRef = useRef(false);
             const nodesRef = useRef(nodes);
             const textLabelsRef = useRef(textLabels);
+            const sectionsRef = useRef(sections);
             const viewportStateRef = useRef(viewport);
             const multiDragRef = useRef(null);
 
@@ -1697,6 +1998,7 @@
             // Keep refs in sync with state
             useEffect(() => { nodesRef.current = nodes; }, [nodes]);
             useEffect(() => { textLabelsRef.current = textLabels; }, [textLabels]);
+            useEffect(() => { sectionsRef.current = sections; }, [sections]);
             useEffect(() => { viewportStateRef.current = viewport; }, [viewport]);
 
             // Clear multi-drag tracking when selection changes
@@ -1710,6 +2012,7 @@
                     nodes: JSON.parse(JSON.stringify(nodes)),
                     edges: JSON.parse(JSON.stringify(edges)),
                     textLabels: JSON.parse(JSON.stringify(textLabels)),
+                    sections: JSON.parse(JSON.stringify(sections)),
                 };
                 undoStackRef.current.push(snapshot);
                 // Trim stack if it exceeds limit
@@ -1719,7 +2022,7 @@
                 // Clear redo stack when new mutation occurs
                 redoStackRef.current = [];
                 forceUpdate(v => v + 1);
-            }, [nodes, edges, textLabels]);
+            }, [nodes, edges, textLabels, sections]);
 
             const pushUndoDebounced = useCallback(() => {
                 // Clear existing timer
@@ -1741,6 +2044,7 @@
                     nodes: JSON.parse(JSON.stringify(nodes)),
                     edges: JSON.parse(JSON.stringify(edges)),
                     textLabels: JSON.parse(JSON.stringify(textLabels)),
+                    sections: JSON.parse(JSON.stringify(sections)),
                 };
                 redoStackRef.current.push(currentState);
 
@@ -1749,9 +2053,10 @@
                 setNodes(snapshot.nodes);
                 setEdges(snapshot.edges);
                 setTextLabels(snapshot.textLabels);
+                setSections(snapshot.sections || []);
                 setSelectedIds([]);
                 forceUpdate(v => v + 1);
-            }, [nodes, edges, textLabels]);
+            }, [nodes, edges, textLabels, sections]);
 
             const redo = useCallback(() => {
                 if (redoStackRef.current.length === 0) return;
@@ -1761,6 +2066,7 @@
                     nodes: JSON.parse(JSON.stringify(nodes)),
                     edges: JSON.parse(JSON.stringify(edges)),
                     textLabels: JSON.parse(JSON.stringify(textLabels)),
+                    sections: JSON.parse(JSON.stringify(sections)),
                 };
                 undoStackRef.current.push(currentState);
                 // Trim if needed
@@ -1773,9 +2079,10 @@
                 setNodes(snapshot.nodes);
                 setEdges(snapshot.edges);
                 setTextLabels(snapshot.textLabels);
+                setSections(snapshot.sections || []);
                 setSelectedIds([]);
                 forceUpdate(v => v + 1);
-            }, [nodes, edges, textLabels]);
+            }, [nodes, edges, textLabels, sections]);
 
             // Load from localStorage on mount
             useEffect(() => {
@@ -1836,6 +2143,7 @@
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         if (data.textLabels) setTextLabels(data.textLabels);
+                        if (data.sections) setSections(data.sections);
                     }
                 } catch { }
                 initialLoadRef.current = true;
@@ -1845,10 +2153,10 @@
             useEffect(() => {
                 if (!initialLoadRef.current) return;
                 const t = setTimeout(() => {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, csvData, textLabels }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, csvData, textLabels, sections }));
                 }, 300);
                 return () => clearTimeout(t);
-            }, [nodes, edges, csvData, textLabels]);
+            }, [nodes, edges, csvData, textLabels, sections]);
 
             // Keyboard shortcuts
             useEffect(() => {
@@ -1889,6 +2197,7 @@
                             setNodes(prev => prev.filter(n => !selectedIds.includes(n.id)));
                             setEdges(prev => prev.filter(e => !selectedIds.includes(e.from) && !selectedIds.includes(e.to) && !selectedIds.includes(e.id)));
                             setTextLabels(prev => prev.filter(l => !selectedIds.includes(l.id)));
+                            setSections(prev => prev.filter(s => !selectedIds.includes(s.id)));
                             setSelectedIds([]);
                         }
                     }
@@ -1897,6 +2206,7 @@
                         selectedIds.forEach(id => {
                             duplicateNode(id);
                             duplicateTextLabel(id);
+                            duplicateSection(id);
                         });
                     }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
@@ -1904,15 +2214,17 @@
                             // Copy selected objects to clipboard
                             const nodesToCopy = nodes.filter(n => selectedIds.includes(n.id));
                             const labelsToCopy = textLabels.filter(l => selectedIds.includes(l.id));
-                            setClipboard({ nodes: nodesToCopy, textLabels: labelsToCopy });
+                            const sectionsToCopy = sections.filter(s => selectedIds.includes(s.id));
+                            setClipboard({ nodes: nodesToCopy, textLabels: labelsToCopy, sections: sectionsToCopy });
                         }
                     }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-                        if (clipboard.nodes.length > 0 || clipboard.textLabels.length > 0) {
+                        if (clipboard.nodes.length > 0 || clipboard.textLabels.length > 0 || clipboard.sections.length > 0) {
                             e.preventDefault();
                             pushUndo();
                             const newNodeIds = [];
                             const newLabelIds = [];
+                            const newSectionIds = [];
 
                             // Paste nodes
                             clipboard.nodes.forEach(node => {
@@ -1945,8 +2257,24 @@
                                 newLabelIds.push(newId);
                             });
 
+                            // Paste sections
+                            clipboard.sections.forEach(section => {
+                                const newId = genId('section');
+                                const newSection = {
+                                    ...section,
+                                    id: newId,
+                                    label: section.label + ' (copy)',
+                                    position: {
+                                        x: snapToGrid(section.position.x + 40),
+                                        y: snapToGrid(section.position.y + 40),
+                                    },
+                                };
+                                setSections(prev => [...prev, newSection]);
+                                newSectionIds.push(newId);
+                            });
+
                             // Select the newly pasted objects
-                            setSelectedIds([...newNodeIds, ...newLabelIds]);
+                            setSelectedIds([...newNodeIds, ...newLabelIds, ...newSectionIds]);
                         }
                     }
                 }
@@ -1964,7 +2292,7 @@
                     window.removeEventListener('keydown', handleKeyDown);
                     window.removeEventListener('keyup', handleKeyUp);
                 };
-            }, [selectedIds, duplicateNode, duplicateTextLabel]);
+            }, [selectedIds, duplicateNode, duplicateTextLabel, duplicateSection, nodes, textLabels, sections, clipboard, pushUndo, undo, redo]);
 
             // ---- Node CRUD ----
             const addNode = useCallback((x, y) => {
@@ -2129,6 +2457,128 @@
                 setSelectedIds([newLabel.id]);
             }, [textLabels, pushUndo]);
 
+            // ---- Section CRUD ----
+            const addSection = useCallback((x, y) => {
+                pushUndo();
+                const section = {
+                    id: genId('section'),
+                    type: 'section',
+                    label: 'Section',
+                    position: { x: snapToGrid(x), y: snapToGrid(y) },
+                    size: { width: 400, height: 300 },
+                    color: 0,
+                };
+                setSections(prev => [...prev, section]);
+                setSelectedIds([section.id]);
+            }, [pushUndo]);
+
+            const updateSection = useCallback((id, updates) => {
+                pushUndoDebounced();
+                setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+            }, [pushUndoDebounced]);
+
+            const deleteSection = useCallback((id) => {
+                pushUndo();
+                setSections(prev => prev.filter(s => s.id !== id));
+                setSelectedIds(prev => prev.filter(pid => pid !== id));
+            }, [pushUndo]);
+
+            const duplicateSection = useCallback((id) => {
+                const source = sections.find(s => s.id === id);
+                if (!source) return;
+                pushUndo();
+                const newSection = {
+                    ...source,
+                    id: genId('section'),
+                    label: source.label + ' (copy)',
+                    position: {
+                        x: snapToGrid(source.position.x + 40),
+                        y: snapToGrid(source.position.y + 40)
+                    }
+                };
+                setSections(prev => [...prev, newSection]);
+                setSelectedIds([newSection.id]);
+            }, [sections, pushUndo]);
+
+            // Track starting positions for section drag
+            const sectionDragStartRef = useRef(null);
+
+            // Special handler for section movement with contained objects
+            const handleSectionMove = useCallback((sectionId, newPosition, containedIds, isStart = false, shouldSnap = false) => {
+                // Initialize drag tracking on start
+                if (isStart) {
+                    const section = sections.find(s => s.id === sectionId);
+                    if (!section) return;
+
+                    sectionDragStartRef.current = {
+                        sectionStartPos: { ...section.position },
+                        objectStartPos: {}
+                    };
+
+                    // Store starting positions of all contained objects
+                    containedIds.forEach(objId => {
+                        const node = nodes.find(n => n.id === objId);
+                        const label = textLabels.find(l => l.id === objId);
+                        if (node) {
+                            sectionDragStartRef.current.objectStartPos[objId] = { ...node.position };
+                        } else if (label) {
+                            sectionDragStartRef.current.objectStartPos[objId] = { ...label.position };
+                        }
+                    });
+                    return;
+                }
+
+                // Update section position
+                setSections(prev => prev.map(s =>
+                    s.id === sectionId ? { ...s, position: newPosition } : s
+                ));
+
+                // Calculate delta from starting position
+                if (sectionDragStartRef.current && containedIds && containedIds.length > 0) {
+                    const dx = newPosition.x - sectionDragStartRef.current.sectionStartPos.x;
+                    const dy = newPosition.y - sectionDragStartRef.current.sectionStartPos.y;
+
+                    // Capture ref values into local variable BEFORE setState callbacks
+                    // to prevent null reference errors when React batches state updates
+                    const objectStartPositions = sectionDragStartRef.current.objectStartPos;
+
+                    setNodes(prev => prev.map(node => {
+                        if (containedIds.includes(node.id) && objectStartPositions[node.id]) {
+                            const startPos = objectStartPositions[node.id];
+                            const newPos = shouldSnap ? {
+                                x: snapToGrid(startPos.x + dx),
+                                y: snapToGrid(startPos.y + dy)
+                            } : {
+                                x: startPos.x + dx,
+                                y: startPos.y + dy
+                            };
+                            return { ...node, position: newPos };
+                        }
+                        return node;
+                    }));
+
+                    setTextLabels(prev => prev.map(label => {
+                        if (containedIds.includes(label.id) && objectStartPositions[label.id]) {
+                            const startPos = objectStartPositions[label.id];
+                            const newPos = shouldSnap ? {
+                                x: snapToGrid(startPos.x + dx),
+                                y: snapToGrid(startPos.y + dy)
+                            } : {
+                                x: startPos.x + dx,
+                                y: startPos.y + dy
+                            };
+                            return { ...label, position: newPos };
+                        }
+                        return label;
+                    }));
+                }
+
+                // Clear drag tracking on snap (end of drag)
+                if (shouldSnap) {
+                    sectionDragStartRef.current = null;
+                }
+            }, [sections, nodes, textLabels]);
+
             // ---- Edge CRUD ----
             const addEdge = useCallback((fromId, toId) => {
                 if (fromId === toId) return;
@@ -2255,9 +2705,10 @@
                             const minY = Math.min(startPos.y, endPos.y);
                             const maxY = Math.max(startPos.y, endPos.y);
 
-                            // Read latest nodes and textLabels from refs
+                            // Read latest nodes, textLabels, and sections from refs
                             const currentNodes = nodesRef.current;
                             const currentTextLabels = textLabelsRef.current;
+                            const currentSections = sectionsRef.current;
 
                             // Find all objects that intersect with the selection box
                             const selectedNodeIds = currentNodes.filter(node => {
@@ -2284,11 +2735,22 @@
                                 );
                             }).map(l => l.id);
 
+                            const selectedSectionIds = currentSections.filter(section => {
+                                const sectionRight = section.position.x + section.size.width;
+                                const sectionBottom = section.position.y + section.size.height;
+                                return (
+                                    section.position.x < maxX &&
+                                    sectionRight > minX &&
+                                    section.position.y < maxY &&
+                                    sectionBottom > minY
+                                );
+                            }).map(s => s.id);
+
                             // Add to selection (or replace if shift not held)
                             if (shiftHeld) {
-                                setSelectedIds(prev => [...new Set([...prev, ...selectedNodeIds, ...selectedLabelIds])]);
+                                setSelectedIds(prev => [...new Set([...prev, ...selectedNodeIds, ...selectedLabelIds, ...selectedSectionIds])]);
                             } else {
-                                setSelectedIds([...selectedNodeIds, ...selectedLabelIds]);
+                                setSelectedIds([...selectedNodeIds, ...selectedLabelIds, ...selectedSectionIds]);
                             }
                         } catch (error) {
                             console.error('Error during selection box intersection test:', error);
@@ -2306,7 +2768,12 @@
             }, [connecting, cursorMode]);
 
             const handleCanvasDoubleClick = useCallback((e) => {
-                if (e.target !== e.currentTarget && !e.target.classList.contains('canvas-transform')) return;
+                // Don't create node if double-clicking on a section, node, text label, or edge
+                if (e.target !== e.currentTarget &&
+                    !e.target.classList.contains('canvas-transform') &&
+                    !e.target.closest('.section')) return;
+                // Don't create node if double-clicking specifically on a section
+                if (e.target.closest('.section')) return;
                 const pos = screenToCanvas(e.clientX, e.clientY);
                 addNode(pos.x - NODE_WIDTH / 2, pos.y - 40);
             }, [screenToCanvas, addNode]);
@@ -2383,7 +2850,7 @@
 
             // ---- Import/Export ----
             const exportJSON = useCallback(() => {
-                const data = JSON.stringify({ nodes, edges, csvData, textLabels }, null, 2);
+                const data = JSON.stringify({ nodes, edges, csvData, textLabels, sections }, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -2391,7 +2858,7 @@
                 a.download = 'funnel-builder-export.json';
                 a.click();
                 URL.revokeObjectURL(url);
-            }, [nodes, edges, csvData]);
+            }, [nodes, edges, csvData, textLabels, sections]);
 
             const importJSON = useCallback((e) => {
                 const file = e.target.files[0];
@@ -2416,6 +2883,7 @@
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         if (data.textLabels) setTextLabels(data.textLabels);
+                        if (data.sections) setSections(data.sections);
                         setSelectedIds([]);
                     } catch {
                         alert('Invalid JSON file.');
@@ -2497,6 +2965,32 @@
                     zoom,
                 });
             }, [nodes]);
+
+            const zoomToSection = useCallback((sectionId) => {
+                const section = sections.find(s => s.id === sectionId);
+                if (!section) return;
+
+                const rect = viewportRef.current.getBoundingClientRect();
+                const pad = 50;
+
+                // Calculate bounding box of the section
+                const minX = section.position.x;
+                const minY = section.position.y;
+                const maxX = section.position.x + section.size.width;
+                const maxY = section.position.y + section.size.height;
+
+                const w = maxX - minX + pad * 2;
+                const h = maxY - minY + pad * 2;
+                const zoom = Math.min(rect.width / w, rect.height / h, 1.5);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+
+                setViewport({
+                    x: rect.width / 2 - cx * zoom,
+                    y: rect.height / 2 - cy * zoom,
+                    zoom,
+                });
+            }, [sections]);
 
             // ---- Lookup helpers ----
             const nodesById = useMemo(() => {
@@ -2584,6 +3078,8 @@
 
             const selectedNode = selectedIds.length === 1 && nodesById[selectedIds[0]] ? nodesById[selectedIds[0]] : null;
             const selectedEdge = selectedIds.length === 1 ? edges.find(e => e.id === selectedIds[0]) : null;
+            const selectedSection = selectedIds.length === 1 ? sections.find(s => s.id === selectedIds[0]) : null;
+            const selectedTextLabel = selectedIds.length === 1 ? textLabels.find(l => l.id === selectedIds[0]) : null;
 
             // Multi-object move handler
             const handleMultiMove = useCallback((draggedId, newPosition) => {
@@ -2738,6 +3234,17 @@
                             </svg>
                             Add Text Box
                         </button>
+                        <button className="toolbar-btn" onClick={() => {
+                            const rect = viewportRef.current.getBoundingClientRect();
+                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                            addSection(center.x - 200, center.y - 150);
+                        }} title="Add Section">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <line x1="3" y1="9" x2="21" y2="9" />
+                            </svg>
+                            Add Section
+                        </button>
                         {csvData && (
                             <button className="toolbar-btn" onClick={() => {
                                 const rect = viewportRef.current.getBoundingClientRect();
@@ -2796,6 +3303,54 @@
                         </div>
                         <div className="toolbar-sep" />
                         <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                    </div>
+
+                    {/* Side Navigation */}
+                    <div className={`side-nav${sideNavOpen ? ' open' : ''}`}>
+                        {/* Toggle button integrated into the nav panel */}
+                        <button
+                            className="side-nav-toggle"
+                            onClick={() => setSideNavOpen(!sideNavOpen)}
+                            title={sideNavOpen ? "Close sections panel" : "Open sections panel"}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                {sideNavOpen ? (
+                                    <path d="M15 18l-6-6 6-6" />
+                                ) : (
+                                    <>
+                                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                                        <line x1="3" y1="9" x2="21" y2="9" />
+                                    </>
+                                )}
+                            </svg>
+                        </button>
+                        <div className="side-nav-header">
+                            <span className="side-nav-title">Sections</span>
+                        </div>
+                        <div className="side-nav-body">
+                            {sections.length === 0 ? (
+                                <div className="side-nav-empty">No sections yet</div>
+                            ) : (
+                                sections.map(section => (
+                                    <div
+                                        key={section.id}
+                                        className={`side-nav-item${selectedIds.includes(section.id) ? ' active' : ''}`}
+                                        onClick={() => {
+                                            zoomToSection(section.id);
+                                            setSelectedIds([section.id]);
+                                        }}
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+                                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                                            <line x1="3" y1="9" x2="21" y2="9" />
+                                        </svg>
+                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {section.label || 'Section'}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
 
                     {/* Canvas */}
@@ -2896,6 +3451,22 @@
                                 />
                             )}
 
+                            {/* Sections (rendered behind everything) */}
+                            {sections.map(section => (
+                                <SectionNode
+                                    key={section.id}
+                                    section={section}
+                                    isSelected={selectedIds.includes(section.id)}
+                                    viewportZoom={viewport.zoom}
+                                    nodes={nodesWithComputedMetrics}
+                                    textLabels={textLabels}
+                                    onSelect={(e) => { handleSelect(section.id, e); }}
+                                    onMove={handleSectionMove}
+                                    onResize={(updates) => updateSection(section.id, updates)}
+                                    onDragStart={pushUndo}
+                                />
+                            ))}
+
                             {/* Nodes */}
                             {nodesWithComputedMetrics.map(node => {
                                 if (node.type === 'global-filter') {
@@ -2958,7 +3529,7 @@
                             ))}
                         </div>
 
-                        {nodes.length === 0 && textLabels.length === 0 && (
+                        {nodes.length === 0 && textLabels.length === 0 && sections.length === 0 && (
                             <div className="empty-state">
                                 <h2>Build Your Funnel</h2>
                                 <p>Create nodes and connect them to visualize your data flow.</p>
@@ -2978,9 +3549,11 @@
                                             ? (selectedNode.type === 'global-filter' ? 'Global Filter Properties'
                                                 : selectedNode.type === 'stream-filter' ? 'Stream Filter Properties'
                                                     : 'Node Properties')
-                                            : selectedEdge
-                                                ? 'Edge Properties'
-                                                : 'Text Box Properties'}
+                                            : selectedSection
+                                                ? 'Section Properties'
+                                                : selectedEdge
+                                                    ? 'Edge Properties'
+                                                    : 'Text Box Properties'}
                                 </span>
                                 <button className="panel-close" onClick={() => { setSelectedIds([]); }}>&times;</button>
                             </div>
@@ -3030,6 +3603,16 @@
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
+                                    />
+                                )}
+                                {selectedSection && (
+                                    <SectionEditor
+                                        section={selectedSection}
+                                        nodes={nodesWithComputedMetrics}
+                                        textLabels={textLabels}
+                                        onUpdate={(updates) => updateSection(selectedSection.id, updates)}
+                                        onDelete={() => deleteSection(selectedSection.id)}
+                                        onDuplicate={() => duplicateSection(selectedSection.id)}
                                     />
                                 )}
                                 {selectedEdge && (
@@ -3369,6 +3952,202 @@
                         onClick={(e) => { e.stopPropagation(); onStartConnection(); }}
                         title="Output — click to connect"
                     />
+                </div>
+            );
+        }
+
+        // ========================
+        // Section Components
+        // ========================
+        function SectionNode({ section, isSelected, viewportZoom, nodes, textLabels, onSelect, onMove, onResize, onDragStart, onMoveContainedObjects }) {
+            const [isDragging, setIsDragging] = useState(false);
+            const [isResizing, setIsResizing] = useState(null);
+
+            const handleMouseDown = useCallback((e) => {
+                // Don't start drag if clicking on resize handle
+                if (e.target.classList.contains('section-resize-handle')) {
+                    return;
+                }
+
+                e.stopPropagation();
+                if (onSelect) onSelect(e);
+                if (onDragStart) onDragStart();
+
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...section.position };
+                let currentPos = { ...startPos };
+
+                // Find objects contained in this section at drag start
+                const containedIds = getObjectsInSection(section, nodes, textLabels);
+
+                // Initialize drag tracking
+                onMove(section.id, startPos, containedIds, true);
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+                    currentPos = {
+                        x: startPos.x + dx,
+                        y: startPos.y + dy,
+                    };
+
+                    // Move section and all contained objects
+                    onMove(section.id, currentPos, containedIds);
+                }
+                function handleUp() {
+                    setIsDragging(false);
+                    // Snap section and contained objects to grid
+                    const snappedPos = {
+                        x: snapToGrid(currentPos.x),
+                        y: snapToGrid(currentPos.y),
+                    };
+                    onMove(section.id, snappedPos, containedIds, false, true);
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [section, viewportZoom, nodes, textLabels, onSelect, onMove, onDragStart]);
+
+            const handleResizeStart = useCallback((e, direction) => {
+                e.stopPropagation();
+                if (onDragStart) onDragStart();
+
+                setIsResizing(direction);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startPos = { ...section.position };
+                const startSize = { ...section.size };
+
+                function handleMove(ev) {
+                    const dx = (ev.clientX - startX) / viewportZoom;
+                    const dy = (ev.clientY - startY) / viewportZoom;
+
+                    let newPos = { ...startPos };
+                    let newSize = { ...startSize };
+
+                    // Handle resizing based on direction
+                    if (direction.includes('n')) {
+                        newPos.y = startPos.y + dy;
+                        newSize.height = Math.max(80, startSize.height - dy);
+                    }
+                    if (direction.includes('s')) {
+                        newSize.height = Math.max(80, startSize.height + dy);
+                    }
+                    if (direction.includes('w')) {
+                        newPos.x = startPos.x + dx;
+                        newSize.width = Math.max(120, startSize.width - dx);
+                    }
+                    if (direction.includes('e')) {
+                        newSize.width = Math.max(120, startSize.width + dx);
+                    }
+
+                    onResize({ position: newPos, size: newSize });
+                }
+                function handleUp() {
+                    setIsResizing(null);
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                }
+                window.addEventListener('mousemove', handleMove);
+                window.addEventListener('mouseup', handleUp);
+            }, [section.position, section.size, viewportZoom, onResize, onDragStart]);
+
+            return (
+                <div
+                    className={`section${isSelected ? ' selected' : ''}${isDragging || isResizing ? ' dragging' : ''}`}
+                    style={{
+                        left: section.position.x,
+                        top: section.position.y,
+                        width: section.size.width,
+                        height: section.size.height,
+                    }}
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="section-header">{section.label || 'Section'}</div>
+                    {/* Resize handles */}
+                    <div className="section-resize-handle handle-n" onMouseDown={(e) => handleResizeStart(e, 'n')} />
+                    <div className="section-resize-handle handle-s" onMouseDown={(e) => handleResizeStart(e, 's')} />
+                    <div className="section-resize-handle handle-e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
+                    <div className="section-resize-handle handle-w" onMouseDown={(e) => handleResizeStart(e, 'w')} />
+                    <div className="section-resize-handle handle-ne" onMouseDown={(e) => handleResizeStart(e, 'ne')} />
+                    <div className="section-resize-handle handle-nw" onMouseDown={(e) => handleResizeStart(e, 'nw')} />
+                    <div className="section-resize-handle handle-se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
+                    <div className="section-resize-handle handle-sw" onMouseDown={(e) => handleResizeStart(e, 'sw')} />
+                </div>
+            );
+        }
+
+        function SectionEditor({ section, nodes, textLabels, onUpdate, onDelete, onDuplicate }) {
+            // Find objects contained in this section
+            const containedIds = getObjectsInSection(section, nodes, textLabels);
+            const containedNodes = nodes.filter(n => containedIds.includes(n.id));
+            const containedLabels = textLabels.filter(l => containedIds.includes(l.id));
+
+            return (
+                <div>
+                    <div className="panel-section">
+                        <div className="panel-section-title">Section Name</div>
+                        <div className="panel-field">
+                            <input
+                                type="text"
+                                value={section.label || ''}
+                                onChange={e => onUpdate({ label: e.target.value })}
+                                placeholder="Enter section name..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Dimensions</div>
+                        <div className="panel-field">
+                            <label>Width</label>
+                            <input
+                                type="number"
+                                value={Math.round(section.size.width)}
+                                onChange={e => onUpdate({ size: { ...section.size, width: Number(e.target.value) || 120 } })}
+                                min="120"
+                            />
+                        </div>
+                        <div className="panel-field">
+                            <label>Height</label>
+                            <input
+                                type="number"
+                                value={Math.round(section.size.height)}
+                                onChange={e => onUpdate({ size: { ...section.size, height: Number(e.target.value) || 80 } })}
+                                min="80"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="panel-section">
+                        <div className="panel-section-title">Contained Objects</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px 0' }}>
+                            {containedIds.length === 0 ? (
+                                <p style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No objects in this section</p>
+                            ) : (
+                                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                    {containedNodes.map(node => (
+                                        <li key={node.id} style={{ padding: '4px 8px', background: 'var(--input-bg)', borderRadius: '4px', marginBottom: '4px' }}>
+                                            📊 {node.label}
+                                        </li>
+                                    ))}
+                                    {containedLabels.map(label => (
+                                        <li key={label.id} style={{ padding: '4px 8px', background: 'var(--input-bg)', borderRadius: '4px', marginBottom: '4px' }}>
+                                            📝 {label.content || 'Text Label'}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="panel-section delete-section">
+                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                        <button className="delete-btn" onClick={onDelete}>Delete</button>
+                    </div>
                 </div>
             );
         }
