@@ -239,9 +239,9 @@ Read-only canvas for exploring and presenting a funnel without accidentally chan
 **What you can still do in View Mode:**
 - Pan and zoom the canvas
 - Switch cursor mode (Hand / Select)
-- Click objects to select them and view their properties in read-only form
-- **Change filter conditions on Global Filter nodes** — column, operator, and value are fully editable so you can explore different scenarios
-- **Change filter conditions on Stream Filter nodes** — same as global filters; downstream metric values update in real time
+- Click objects to select them (selection highlight appears, but no properties panel opens for regular nodes, sections, edges, or text boxes)
+- **Click a Global Filter node** — opens its properties panel with filter conditions **fully editable** so you can explore different scenarios
+- **Click a Stream Filter node** — opens its properties panel with filter conditions **fully editable**; downstream metric values update in real time
 - Navigate sections via the side navigation panel
 - Export the funnel as JSON
 

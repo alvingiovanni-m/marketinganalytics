@@ -2203,7 +2203,10 @@
                         if (data.edges) setEdges(data.edges);
                         if (data.csvData) setCsvData(data.csvData);
                         if (data.textLabels) setTextLabels(data.textLabels);
-                        if (data.sections) setSections(data.sections);
+                        if (data.sections) {
+                            setSections(data.sections);
+                            if (data.sections.length > 0) setSideNavOpen(true);
+                        }
                     }
                 } catch { }
                 initialLoadRef.current = true;
@@ -3142,6 +3145,8 @@
             const selectedEdge = selectedIds.length === 1 ? edges.find(e => e.id === selectedIds[0]) : null;
             const selectedSection = selectedIds.length === 1 ? sections.find(s => s.id === selectedIds[0]) : null;
             const selectedTextLabel = selectedIds.length === 1 ? textLabels.find(l => l.id === selectedIds[0]) : null;
+            const isFilterNode = selectedNode && (selectedNode.type === 'global-filter' || selectedNode.type === 'stream-filter');
+            const showPropertiesPanel = selectedIds.length > 0 && (!isViewMode || isFilterNode);
 
             // Multi-object move handler
             const handleMultiMove = useCallback((draggedId, newPosition) => {
@@ -3489,7 +3494,6 @@
                                         className={`side-nav-item${selectedIds.includes(section.id) ? ' active' : ''}`}
                                         onClick={() => {
                                             zoomToSection(section.id);
-                                            setSelectedIds([section.id]);
                                         }}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
@@ -3696,7 +3700,7 @@
                     </div>
 
                     {/* Properties Panel */}
-                    {(selectedIds.length > 0) && (
+                    {showPropertiesPanel && (
                         <div className="panel-overlay">
                             <div className="panel-header">
                                 <span className="panel-title">
