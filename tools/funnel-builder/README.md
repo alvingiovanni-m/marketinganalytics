@@ -177,7 +177,22 @@ These shortcuts work **everywhere**, even when focused on input fields in the pr
 
 ### Toolbar Buttons
 
-The toolbar includes visual undo/redo buttons (circular arrow icons) between the cursor mode toggle and "Add Node" button. These buttons:
+The toolbar is organised into labelled groups (left → right):
+
+| Group | Buttons | Visible in View Mode |
+|-------|---------|---------------------|
+| **Mode** | Edit / View mode toggle (pencil / eye icons) | Yes |
+| **History** | Undo / Redo (icon-only) | No |
+| **Cursor** | Hand / Select tool toggle | Yes |
+| **Add** | Add Node (blue), Add Text Box, Add Section, Add Global Filter*, Add Stream Filter* (all icon-only) | No |
+| **Zoom** | Zoom out / percentage / Zoom in / Fit to view | Yes |
+| **File** | Import (edit only), Export | Export only |
+| **CSV** | Upload CSV (shows filename when loaded), Clear CSV ×* (edit only) | Yes |
+| **Canvas** | Clear (danger button) | No |
+
+\* Appears only when CSV data is loaded.
+
+The Undo/Redo buttons:
 - Show the current state (disabled/grayed when no history)
 - Provide tooltips with keyboard shortcut hints
 - Offer an alternative to keyboard shortcuts for discoverability

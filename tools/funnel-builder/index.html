@@ -73,7 +73,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 12px;
+            padding: 10px 12px;
             background: var(--toolbar-bg);
             backdrop-filter: blur(12px);
             border-radius: 12px;
@@ -103,7 +103,7 @@
 
         .toolbar-sep {
             width: 1px;
-            height: 24px;
+            height: 30px;
             background: var(--panel-border);
             margin: 0 4px;
         }
@@ -152,6 +152,35 @@
         .toolbar-btn svg {
             width: 15px;
             height: 15px;
+        }
+
+        .toolbar-group {
+            display: flex;
+            flex-direction: column-reverse;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .toolbar-group-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 500;
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        .toolbar-group-btns {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .toolbar-btn.icon-only {
+            padding: 6px 8px;
+            min-width: 32px;
+            justify-content: center;
         }
 
         .toolbar-zoom {
@@ -3199,180 +3228,232 @@
                         <div className="toolbar-sep" />
                         <span className="toolbar-title">Funnel Builder</span>
                         <div className="toolbar-sep" />
-                        <div className="cursor-mode-toggle">
-                            <button
-                                className={`cursor-mode-btn${cursorMode === 'hand' ? ' active' : ''}`}
-                                onClick={() => setCursorMode('hand')}
-                                title="Hand tool (H) — drag to pan"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 11V6a2 2 0 00-2-2 2 2 0 00-2 2v0M14 10V4a2 2 0 00-2-2 2 2 0 00-2 2v6M10 10.5V6a2 2 0 00-2-2 2 2 0 00-2 2v8" />
-                                    <path d="M18 11a2 2 0 012 2v1a8 8 0 01-8 8h-1a8 8 0 01-5.66-2.34" />
-                                    <path d="M6 14v-1.5" />
-                                </svg>
-                            </button>
-                            <button
-                                className={`cursor-mode-btn${cursorMode === 'select' ? ' active' : ''}`}
-                                onClick={() => setCursorMode('select')}
-                                title="Select tool (V) — drag to select"
-                            >
-                                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                    <path d="M4 2l12 9.5L9.5 13 13 22l-3 1-3.5-9L2 18V2h2z" />
-                                </svg>
-                            </button>
+                        {/* Mode group */}
+                        <div className="toolbar-group">
+                            <div className="toolbar-group-btns">
+                                <div className="cursor-mode-toggle" title="Switch between Edit and View mode">
+                                    <button
+                                        className={`cursor-mode-btn${appMode === 'edit' ? ' active' : ''}`}
+                                        onClick={() => setAppMode('edit')}
+                                        title="Edit Mode — full editing access"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        className={`cursor-mode-btn${appMode === 'view' ? ' active' : ''}`}
+                                        onClick={() => setAppMode('view')}
+                                        title="View Mode — filters only, no editing"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                            <circle cx="12" cy="12" r="3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <span className="toolbar-group-label">Mode</span>
                         </div>
                         <div className="toolbar-sep" />
-                        {/* Edit / View Mode Toggle */}
-                        <div className="cursor-mode-toggle" title="Switch between Edit and View mode">
-                            <button
-                                className={`cursor-mode-btn${appMode === 'edit' ? ' active' : ''}`}
-                                onClick={() => setAppMode('edit')}
-                                title="Edit Mode — full editing access"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                </svg>
-                            </button>
-                            <button
-                                className={`cursor-mode-btn${appMode === 'view' ? ' active' : ''}`}
-                                onClick={() => setAppMode('view')}
-                                title="View Mode — filters only, no editing"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                    <circle cx="12" cy="12" r="3" />
-                                </svg>
-                            </button>
+                        {/* History group (edit mode only) */}
+                        {!isViewMode && (
+                            <>
+                                <div className="toolbar-group">
+                                    <div className="toolbar-group-btns">
+                                        <button
+                                            className="toolbar-btn"
+                                            onClick={undo}
+                                            disabled={undoStackRef.current.length === 0}
+                                            title="Undo (Cmd+Z)"
+                                            style={{ opacity: undoStackRef.current.length === 0 ? 0.4 : 1 }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M3 7v6h6" />
+                                                <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            className="toolbar-btn"
+                                            onClick={redo}
+                                            disabled={redoStackRef.current.length === 0}
+                                            title="Redo (Cmd+Shift+Z)"
+                                            style={{ opacity: redoStackRef.current.length === 0 ? 0.4 : 1 }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M21 7v6h-6" />
+                                                <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <span className="toolbar-group-label">History</span>
+                                </div>
+                                <div className="toolbar-sep" />
+                            </>
+                        )}
+                        {/* Cursor group */}
+                        <div className="toolbar-group">
+                            <div className="toolbar-group-btns">
+                                <div className="cursor-mode-toggle">
+                                    <button
+                                        className={`cursor-mode-btn${cursorMode === 'hand' ? ' active' : ''}`}
+                                        onClick={() => setCursorMode('hand')}
+                                        title="Hand tool (H) — drag to pan"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M18 11V6a2 2 0 00-2-2 2 2 0 00-2 2v0M14 10V4a2 2 0 00-2-2 2 2 0 00-2 2v6M10 10.5V6a2 2 0 00-2-2 2 2 0 00-2 2v8" />
+                                            <path d="M18 11a2 2 0 012 2v1a8 8 0 01-8 8h-1a8 8 0 01-5.66-2.34" />
+                                            <path d="M6 14v-1.5" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        className={`cursor-mode-btn${cursorMode === 'select' ? ' active' : ''}`}
+                                        onClick={() => setCursorMode('select')}
+                                        title="Select tool (V) — drag to select"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                            <path d="M4 2l12 9.5L9.5 13 13 22l-3 1-3.5-9L2 18V2h2z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <span className="toolbar-group-label">Cursor</span>
                         </div>
-                        {!isViewMode && <div className="toolbar-sep" />}
-                        {!isViewMode && (
-                            <button
-                                className="toolbar-btn"
-                                onClick={undo}
-                                disabled={undoStackRef.current.length === 0}
-                                title="Undo (Cmd+Z)"
-                                style={{ opacity: undoStackRef.current.length === 0 ? 0.4 : 1 }}
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M3 7v6h6" />
-                                    <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
-                                </svg>
-                            </button>
-                        )}
-                        {!isViewMode && (
-                            <button
-                                className="toolbar-btn"
-                                onClick={redo}
-                                disabled={redoStackRef.current.length === 0}
-                                title="Redo (Cmd+Shift+Z)"
-                                style={{ opacity: redoStackRef.current.length === 0 ? 0.4 : 1 }}
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M21 7v6h-6" />
-                                    <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7" />
-                                </svg>
-                            </button>
-                        )}
-                        {!isViewMode && <div className="toolbar-sep" />}
-                        {!isViewMode && (
-                            <button className="toolbar-btn primary" onClick={() => {
-                                const rect = viewportRef.current.getBoundingClientRect();
-                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                                addNode(center.x - NODE_WIDTH / 2, center.y - 40);
-                            }}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                                Add Node
-                            </button>
-                        )}
-                        {!isViewMode && (
-                            <button className="toolbar-btn" onClick={() => {
-                                const rect = viewportRef.current.getBoundingClientRect();
-                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                                addTextLabel(center.x - 50, center.y - 15);
-                            }} title="Add Text Box">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="4 7 4 4 20 4 20 7"></polyline>
-                                    <line x1="9" y1="20" x2="15" y2="20"></line>
-                                    <line x1="12" y1="4" x2="12" y2="20"></line>
-                                </svg>
-                                Add Text Box
-                            </button>
-                        )}
-                        {!isViewMode && (
-                            <button className="toolbar-btn" onClick={() => {
-                                const rect = viewportRef.current.getBoundingClientRect();
-                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                                addSection(center.x - 200, center.y - 150);
-                            }} title="Add Section">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                                    <line x1="3" y1="9" x2="21" y2="9" />
-                                </svg>
-                                Add Section
-                            </button>
-                        )}
-                        {!isViewMode && csvData && (
-                            <button className="toolbar-btn" onClick={() => {
-                                const rect = viewportRef.current.getBoundingClientRect();
-                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                                addGlobalFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
-                            }} title="Add Global Filter (applies to all nodes)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M3 4h18M7 9h10M10 14h4M12 19h.01" />
-                                </svg>
-                                Add Global Filter
-                            </button>
-                        )}
-                        {!isViewMode && csvData && (
-                            <button className="toolbar-btn" onClick={() => {
-                                const rect = viewportRef.current.getBoundingClientRect();
-                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                                addStreamFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
-                            }} title="Add Stream Filter (applies to downstream nodes)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M3 4h18M7 9h10M10 14h4" />
-                                    <path d="M12 14l4 4" strokeWidth="2" markerEnd="url(#arrow)" />
-                                </svg>
-                                Add Stream Filter
-                            </button>
-                        )}
                         <div className="toolbar-sep" />
+                        {/* Add group (edit mode only) */}
                         {!isViewMode && (
-                            <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
+                            <>
+                                <div className="toolbar-group">
+                                    <div className="toolbar-group-btns">
+                                        <button className="toolbar-btn primary icon-only" title="Add Node" onClick={() => {
+                                            const rect = viewportRef.current.getBoundingClientRect();
+                                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                            addNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                                        }}>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                                        </button>
+                                        <button className="toolbar-btn icon-only" title="Add Text Box" onClick={() => {
+                                            const rect = viewportRef.current.getBoundingClientRect();
+                                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                            addTextLabel(center.x - 50, center.y - 15);
+                                        }}>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                                                <line x1="9" y1="20" x2="15" y2="20"></line>
+                                                <line x1="12" y1="4" x2="12" y2="20"></line>
+                                            </svg>
+                                        </button>
+                                        <button className="toolbar-btn icon-only" title="Add Section" onClick={() => {
+                                            const rect = viewportRef.current.getBoundingClientRect();
+                                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                            addSection(center.x - 200, center.y - 150);
+                                        }}>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                                <line x1="3" y1="9" x2="21" y2="9" />
+                                            </svg>
+                                        </button>
+                                        {csvData && (
+                                            <button className="toolbar-btn icon-only" title="Add Global Filter" onClick={() => {
+                                                const rect = viewportRef.current.getBoundingClientRect();
+                                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                                addGlobalFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                                            }}>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M3 4h18M7 9h10M10 14h4M12 19h.01" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                        {csvData && (
+                                            <button className="toolbar-btn icon-only" title="Add Stream Filter" onClick={() => {
+                                                const rect = viewportRef.current.getBoundingClientRect();
+                                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                                addStreamFilterNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                                            }}>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M3 4h18M7 9h10M10 14h4" />
+                                                    <path d="M12 14l4 4" strokeWidth="2" markerEnd="url(#arrow)" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                    <span className="toolbar-group-label">Add Objects</span>
+                                </div>
+                                <div className="toolbar-sep" />
+                            </>
                         )}
-                        <button className="toolbar-btn" onClick={exportJSON}>Export</button>
-                        <input ref={fileInputRef} type="file" accept=".json" className="hidden-input" onChange={importJSON} />
+                        {/* Zoom group */}
+                        <div className="toolbar-group">
+                            <div className="toolbar-group-btns toolbar-zoom">
+                                <button className="zoom-btn" onClick={zoomOut} title="Zoom out">&#8722;</button>
+                                <span className="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
+                                <button className="zoom-btn" onClick={zoomIn} title="Zoom in">+</button>
+                                <button className="zoom-btn" onClick={fitToView} title="Fit to view">&#8862;</button>
+                            </div>
+                            <span className="toolbar-group-label">Zoom</span>
+                        </div>
                         <div className="toolbar-sep" />
-                        <button className="toolbar-btn" onClick={() => csvFileInputRef.current.click()}>
-                            {csvData ? (
-                                <>
+                        {/* File group */}
+                        <div className="toolbar-group">
+                            <div className="toolbar-group-btns">
+                                {!isViewMode && (
+                                    <button className="toolbar-btn icon-only" title="Import JSON" onClick={() => fileInputRef.current.click()}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                            <polyline points="17 8 12 3 7 8" />
+                                            <line x1="12" y1="3" x2="12" y2="15" />
+                                        </svg>
+                                    </button>
+                                )}
+                                <button className="toolbar-btn icon-only" title="Export JSON" onClick={exportJSON}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
                                     </svg>
-                                    {csvData.fileName} ({csvData.rows.length} rows)
-                                </>
-                            ) : 'Upload CSV'}
-                        </button>
-                        {!isViewMode && csvData && (
-                            <button className="toolbar-btn" onClick={clearCSV} title="Clear CSV">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                            </button>
-                        )}
-                        <input ref={csvFileInputRef} type="file" accept=".csv" className="hidden-input" onChange={uploadCSV} />
-                        <div className="toolbar-sep" />
-                        <div className="toolbar-zoom">
-                            <button className="zoom-btn" onClick={zoomOut} title="Zoom out">&#8722;</button>
-                            <span className="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
-                            <button className="zoom-btn" onClick={zoomIn} title="Zoom in">+</button>
-                            <button className="zoom-btn" onClick={fitToView} title="Fit to view">&#8862;</button>
+                                </button>
+                                <input ref={fileInputRef} type="file" accept=".json" className="hidden-input" onChange={importJSON} />
+                            </div>
+                            <span className="toolbar-group-label">File</span>
                         </div>
-                        {!isViewMode && <div className="toolbar-sep" />}
+                        <div className="toolbar-sep" />
+                        {/* CSV group */}
+                        <div className="toolbar-group">
+                            <div className="toolbar-group-btns">
+                                <button className="toolbar-btn" onClick={() => csvFileInputRef.current.click()}>
+                                    {csvData ? (
+                                        <>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            {csvData.fileName} ({csvData.rows.length} rows)
+                                        </>
+                                    ) : 'Upload CSV'}
+                                </button>
+                                {!isViewMode && csvData && (
+                                    <button className="toolbar-btn icon-only" onClick={clearCSV} title="Clear CSV">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                    </button>
+                                )}
+                                <input ref={csvFileInputRef} type="file" accept=".csv" className="hidden-input" onChange={uploadCSV} />
+                            </div>
+                            <span className="toolbar-group-label">CSV</span>
+                        </div>
+                        {/* Clear group (edit mode only) */}
                         {!isViewMode && (
-                            <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                            <>
+                                <div className="toolbar-sep" />
+                                <div className="toolbar-group">
+                                    <div className="toolbar-group-btns">
+                                        <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                                    </div>
+                                    <span className="toolbar-group-label">Canvas</span>
+                                </div>
+                            </>
                         )}
                     </div>
 
