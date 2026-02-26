@@ -1313,6 +1313,33 @@
             display: none;
         }
 
+        /* === View Mode === */
+        .canvas-viewport.view-mode .funnel-node,
+        .canvas-viewport.view-mode .global-filter-node,
+        .canvas-viewport.view-mode .stream-filter-node,
+        .canvas-viewport.view-mode .text-label,
+        .canvas-viewport.view-mode .section {
+            cursor: default;
+        }
+
+        .canvas-viewport.view-mode .node-port {
+            display: none;
+        }
+
+        .view-mode-badge {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 50;
+            font-size: 11px;
+            color: var(--primary);
+            background: var(--primary-light);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid #c7d0fc;
+            font-weight: 500;
+        }
+
         /* === Responsive === */
         @media (max-width: 768px) {
             .toolbar {
@@ -1959,6 +1986,10 @@
             const [selectedIds, setSelectedIds] = useState([]);
             const [selectionBox, setSelectionBox] = useState(null);
             const [cursorMode, setCursorMode] = useState('hand'); // 'hand' | 'select'
+            const [appMode, setAppMode] = useState('edit'); // 'edit' | 'view'
+            const isViewMode = appMode === 'view';
+            const isViewModeRef = useRef(false);
+            isViewModeRef.current = isViewMode;
             const [clipboard, setClipboard] = useState({ nodes: [], textLabels: [], sections: [] });
 
             const handleSelect = useCallback((id, e) => {
@@ -2166,13 +2197,13 @@
                         spacebarPressedRef.current = true;
                     }
 
-                    // Undo/Redo shortcuts (work even in inputs)
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                    // Undo/Redo shortcuts (work even in inputs, but blocked in view mode)
+                    if (!isViewModeRef.current && (e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                         e.preventDefault();
                         undo();
                         return;
                     }
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+                    if (!isViewModeRef.current && (e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
                         e.preventDefault();
                         redo();
                         return;
@@ -2191,7 +2222,7 @@
                     if (e.key === 'h' || e.key === 'H') {
                         setCursorMode('hand');
                     }
-                    if (e.key === 'Delete' || e.key === 'Backspace') {
+                    if (!isViewModeRef.current && (e.key === 'Delete' || e.key === 'Backspace')) {
                         if (selectedIds.length > 0) {
                             pushUndo();
                             setNodes(prev => prev.filter(n => !selectedIds.includes(n.id)));
@@ -2201,7 +2232,7 @@
                             setSelectedIds([]);
                         }
                     }
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                    if (!isViewModeRef.current && (e.ctrlKey || e.metaKey) && e.key === 'd') {
                         e.preventDefault();
                         selectedIds.forEach(id => {
                             duplicateNode(id);
@@ -2209,7 +2240,7 @@
                             duplicateSection(id);
                         });
                     }
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                    if (!isViewModeRef.current && (e.ctrlKey || e.metaKey) && e.key === 'c') {
                         if (selectedIds.length > 0) {
                             // Copy selected objects to clipboard
                             const nodesToCopy = nodes.filter(n => selectedIds.includes(n.id));
@@ -2218,7 +2249,7 @@
                             setClipboard({ nodes: nodesToCopy, textLabels: labelsToCopy, sections: sectionsToCopy });
                         }
                     }
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                    if (!isViewModeRef.current && (e.ctrlKey || e.metaKey) && e.key === 'v') {
                         if (clipboard.nodes.length > 0 || clipboard.textLabels.length > 0 || clipboard.sections.length > 0) {
                             e.preventDefault();
                             pushUndo();
@@ -2768,6 +2799,7 @@
             }, [connecting, cursorMode]);
 
             const handleCanvasDoubleClick = useCallback((e) => {
+                if (isViewMode) return;
                 // Don't create node if double-clicking on a section, node, text label, or edge
                 if (e.target !== e.currentTarget &&
                     !e.target.classList.contains('canvas-transform') &&
@@ -2776,7 +2808,7 @@
                 if (e.target.closest('.section')) return;
                 const pos = screenToCanvas(e.clientX, e.clientY);
                 addNode(pos.x - NODE_WIDTH / 2, pos.y - 40);
-            }, [screenToCanvas, addNode]);
+            }, [screenToCanvas, addNode, isViewMode]);
 
             const handleWheel = useCallback((e) => {
                 e.preventDefault();
@@ -2826,6 +2858,7 @@
 
             // ---- Connection flow ----
             const startConnection = useCallback((nodeId) => {
+                if (isViewMode) return;
                 // Prevent connections from global filter nodes
                 const node = nodes.find(n => n.id === nodeId);
                 if (node && node.type === 'global-filter') {
@@ -2833,7 +2866,7 @@
                 }
                 setConnecting({ fromId: nodeId });
                 setSelectedIds([]);
-            }, [nodes]);
+            }, [nodes, isViewMode]);
 
             const endConnection = useCallback((nodeId) => {
                 // Prevent connections to global filter nodes
@@ -3189,63 +3222,97 @@
                             </button>
                         </div>
                         <div className="toolbar-sep" />
-                        <button
-                            className="toolbar-btn"
-                            onClick={undo}
-                            disabled={undoStackRef.current.length === 0}
-                            title="Undo (Cmd+Z)"
-                            style={{ opacity: undoStackRef.current.length === 0 ? 0.4 : 1 }}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 7v6h6" />
-                                <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
-                            </svg>
-                        </button>
-                        <button
-                            className="toolbar-btn"
-                            onClick={redo}
-                            disabled={redoStackRef.current.length === 0}
-                            title="Redo (Cmd+Shift+Z)"
-                            style={{ opacity: redoStackRef.current.length === 0 ? 0.4 : 1 }}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 7v6h-6" />
-                                <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7" />
-                            </svg>
-                        </button>
-                        <div className="toolbar-sep" />
-                        <button className="toolbar-btn primary" onClick={() => {
-                            const rect = viewportRef.current.getBoundingClientRect();
-                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                            addNode(center.x - NODE_WIDTH / 2, center.y - 40);
-                        }}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                            Add Node
-                        </button>
-                        <button className="toolbar-btn" onClick={() => {
-                            const rect = viewportRef.current.getBoundingClientRect();
-                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                            addTextLabel(center.x - 50, center.y - 15);
-                        }} title="Add Text Box">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="4 7 4 4 20 4 20 7"></polyline>
-                                <line x1="9" y1="20" x2="15" y2="20"></line>
-                                <line x1="12" y1="4" x2="12" y2="20"></line>
-                            </svg>
-                            Add Text Box
-                        </button>
-                        <button className="toolbar-btn" onClick={() => {
-                            const rect = viewportRef.current.getBoundingClientRect();
-                            const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                            addSection(center.x - 200, center.y - 150);
-                        }} title="Add Section">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <line x1="3" y1="9" x2="21" y2="9" />
-                            </svg>
-                            Add Section
-                        </button>
-                        {csvData && (
+                        {/* Edit / View Mode Toggle */}
+                        <div className="cursor-mode-toggle" title="Switch between Edit and View mode">
+                            <button
+                                className={`cursor-mode-btn${appMode === 'edit' ? ' active' : ''}`}
+                                onClick={() => setAppMode('edit')}
+                                title="Edit Mode — full editing access"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                            </button>
+                            <button
+                                className={`cursor-mode-btn${appMode === 'view' ? ' active' : ''}`}
+                                onClick={() => setAppMode('view')}
+                                title="View Mode — filters only, no editing"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                        {!isViewMode && <div className="toolbar-sep" />}
+                        {!isViewMode && (
+                            <button
+                                className="toolbar-btn"
+                                onClick={undo}
+                                disabled={undoStackRef.current.length === 0}
+                                title="Undo (Cmd+Z)"
+                                style={{ opacity: undoStackRef.current.length === 0 ? 0.4 : 1 }}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 7v6h6" />
+                                    <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+                                </svg>
+                            </button>
+                        )}
+                        {!isViewMode && (
+                            <button
+                                className="toolbar-btn"
+                                onClick={redo}
+                                disabled={redoStackRef.current.length === 0}
+                                title="Redo (Cmd+Shift+Z)"
+                                style={{ opacity: redoStackRef.current.length === 0 ? 0.4 : 1 }}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 7v6h-6" />
+                                    <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7" />
+                                </svg>
+                            </button>
+                        )}
+                        {!isViewMode && <div className="toolbar-sep" />}
+                        {!isViewMode && (
+                            <button className="toolbar-btn primary" onClick={() => {
+                                const rect = viewportRef.current.getBoundingClientRect();
+                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                addNode(center.x - NODE_WIDTH / 2, center.y - 40);
+                            }}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                                Add Node
+                            </button>
+                        )}
+                        {!isViewMode && (
+                            <button className="toolbar-btn" onClick={() => {
+                                const rect = viewportRef.current.getBoundingClientRect();
+                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                addTextLabel(center.x - 50, center.y - 15);
+                            }} title="Add Text Box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                                    <line x1="9" y1="20" x2="15" y2="20"></line>
+                                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                                </svg>
+                                Add Text Box
+                            </button>
+                        )}
+                        {!isViewMode && (
+                            <button className="toolbar-btn" onClick={() => {
+                                const rect = viewportRef.current.getBoundingClientRect();
+                                const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                addSection(center.x - 200, center.y - 150);
+                            }} title="Add Section">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                                    <line x1="3" y1="9" x2="21" y2="9" />
+                                </svg>
+                                Add Section
+                            </button>
+                        )}
+                        {!isViewMode && csvData && (
                             <button className="toolbar-btn" onClick={() => {
                                 const rect = viewportRef.current.getBoundingClientRect();
                                 const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -3257,7 +3324,7 @@
                                 Add Global Filter
                             </button>
                         )}
-                        {csvData && (
+                        {!isViewMode && csvData && (
                             <button className="toolbar-btn" onClick={() => {
                                 const rect = viewportRef.current.getBoundingClientRect();
                                 const center = screenToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -3271,7 +3338,9 @@
                             </button>
                         )}
                         <div className="toolbar-sep" />
-                        <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
+                        {!isViewMode && (
+                            <button className="toolbar-btn" onClick={() => fileInputRef.current.click()}>Import</button>
+                        )}
                         <button className="toolbar-btn" onClick={exportJSON}>Export</button>
                         <input ref={fileInputRef} type="file" accept=".json" className="hidden-input" onChange={importJSON} />
                         <div className="toolbar-sep" />
@@ -3285,7 +3354,7 @@
                                 </>
                             ) : 'Upload CSV'}
                         </button>
-                        {csvData && (
+                        {!isViewMode && csvData && (
                             <button className="toolbar-btn" onClick={clearCSV} title="Clear CSV">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -3301,8 +3370,10 @@
                             <button className="zoom-btn" onClick={zoomIn} title="Zoom in">+</button>
                             <button className="zoom-btn" onClick={fitToView} title="Fit to view">&#8862;</button>
                         </div>
-                        <div className="toolbar-sep" />
-                        <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                        {!isViewMode && <div className="toolbar-sep" />}
+                        {!isViewMode && (
+                            <button className="toolbar-btn danger" onClick={clearAll}>Clear</button>
+                        )}
                     </div>
 
                     {/* Side Navigation */}
@@ -3356,7 +3427,7 @@
                     {/* Canvas */}
                     <div
                         ref={viewportRef}
-                        className={`canvas-viewport${cursorMode === 'select' ? ' select-mode' : ''}${isPanning ? ' panning' : ''}${connecting ? ' connecting' : ''}`}
+                        className={`canvas-viewport${cursorMode === 'select' ? ' select-mode' : ''}${isPanning ? ' panning' : ''}${connecting ? ' connecting' : ''}${isViewMode ? ' view-mode' : ''}`}
                         style={gridBgStyle}
                         onMouseDown={handleCanvasMouseDown}
                         onDoubleClick={handleCanvasDoubleClick}
@@ -3457,6 +3528,7 @@
                                     key={section.id}
                                     section={section}
                                     isSelected={selectedIds.includes(section.id)}
+                                    isViewMode={isViewMode}
                                     viewportZoom={viewport.zoom}
                                     nodes={nodesWithComputedMetrics}
                                     textLabels={textLabels}
@@ -3475,6 +3547,7 @@
                                             key={node.id}
                                             node={node}
                                             isSelected={selectedIds.includes(node.id)}
+                                            isViewMode={isViewMode}
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
                                             onSelect={(e) => { handleSelect(node.id, e); }}
@@ -3489,6 +3562,7 @@
                                             key={node.id}
                                             node={node}
                                             isSelected={selectedIds.includes(node.id)}
+                                            isViewMode={isViewMode}
                                             connecting={connecting}
                                             viewportZoom={viewport.zoom}
                                             csvData={csvData}
@@ -3506,6 +3580,7 @@
                                         key={node.id}
                                         node={node}
                                         isSelected={selectedIds.includes(node.id)}
+                                        isViewMode={isViewMode}
                                         connecting={connecting}
                                         viewportZoom={viewport.zoom}
                                         onSelect={(e) => { handleSelect(node.id, e); }}
@@ -3521,6 +3596,7 @@
                                     key={label.id}
                                     label={label}
                                     isSelected={selectedIds.includes(label.id)}
+                                    isViewMode={isViewMode}
                                     viewportZoom={viewport.zoom}
                                     onSelect={(e) => { handleSelect(label.id, e); }}
                                     onMove={(pos) => handleMultiMove(label.id, pos)}
@@ -3563,22 +3639,25 @@
                                         <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
                                             {selectedIds.length} objects selected
                                         </p>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                                            <p style={{ marginBottom: '8px' }}>You can:</p>
-                                            <ul style={{ listStyle: 'none', padding: 0 }}>
-                                                <li style={{ marginBottom: '4px' }}>• Move all selected objects together</li>
-                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+C</strong> to copy</li>
-                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+V</strong> to paste</li>
-                                                <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+D</strong> to duplicate</li>
-                                                <li style={{ marginBottom: '4px' }}>• <strong>Delete/Backspace</strong> to remove</li>
-                                            </ul>
-                                        </div>
+                                        {!isViewMode && (
+                                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                                <p style={{ marginBottom: '8px' }}>You can:</p>
+                                                <ul style={{ listStyle: 'none', padding: 0 }}>
+                                                    <li style={{ marginBottom: '4px' }}>• Move all selected objects together</li>
+                                                    <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+C</strong> to copy</li>
+                                                    <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+V</strong> to paste</li>
+                                                    <li style={{ marginBottom: '4px' }}>• <strong>Cmd/Ctrl+D</strong> to duplicate</li>
+                                                    <li style={{ marginBottom: '4px' }}>• <strong>Delete/Backspace</strong> to remove</li>
+                                                </ul>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 {selectedNode && selectedNode.type === 'global-filter' && (
                                     <GlobalFilterEditor
                                         node={selectedNode}
                                         csvData={csvData}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
@@ -3589,6 +3668,7 @@
                                         node={selectedNode}
                                         csvData={csvData}
                                         allNodes={nodes}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
@@ -3600,6 +3680,7 @@
                                         csvData={csvData}
                                         edges={edges}
                                         allNodes={nodesByIdWithMetrics}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                                         onDelete={() => deleteNode(selectedNode.id)}
                                         onDuplicate={() => duplicateNode(selectedNode.id)}
@@ -3610,6 +3691,7 @@
                                         section={selectedSection}
                                         nodes={nodesWithComputedMetrics}
                                         textLabels={textLabels}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateSection(selectedSection.id, updates)}
                                         onDelete={() => deleteSection(selectedSection.id)}
                                         onDuplicate={() => duplicateSection(selectedSection.id)}
@@ -3620,6 +3702,7 @@
                                         edge={selectedEdge}
                                         sourceNode={nodesByIdWithMetrics[selectedEdge.from]}
                                         targetNode={nodesByIdWithMetrics[selectedEdge.to]}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateEdge(selectedEdge.id, updates)}
                                         onDelete={() => deleteEdge(selectedEdge.id)}
                                     />
@@ -3627,6 +3710,7 @@
                                 {selectedIds.length === 1 && textLabels.some(l => l.id === selectedIds[0]) && (
                                     <TextLabelEditor
                                         label={textLabels.find(l => l.id === selectedIds[0])}
+                                        isViewMode={isViewMode}
                                         onUpdate={(updates) => updateTextLabel(selectedIds[0], updates)}
                                         onDelete={() => deleteTextLabel(selectedIds[0])}
                                         onDuplicate={() => duplicateTextLabel(selectedIds[0])}
@@ -3639,6 +3723,12 @@
                     <div className="privacy-badge">
                         Your data stays in your browser &mdash; nothing leaves your machine.
                     </div>
+
+                    {isViewMode && (
+                        <div className="view-mode-badge">
+                            View Mode — editing disabled
+                        </div>
+                    )}
 
                     {confirmAction && (
                         <div className="confirm-overlay" onClick={() => setConfirmAction(null)}>
@@ -3659,12 +3749,13 @@
         // ========================
         // FunnelNode Component
         // ========================
-        function GlobalFilterNode({ node, isSelected, viewportZoom, onSelect, onMove, csvData, onDragStart }) {
+        function GlobalFilterNode({ node, isSelected, isViewMode, viewportZoom, onSelect, onMove, csvData, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsDragging(true);
@@ -3748,7 +3839,7 @@
             );
         }
 
-        function StreamFilterNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, csvData, allNodes, onDragStart }) {
+        function StreamFilterNode({ node, isSelected, isViewMode, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, csvData, allNodes, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
@@ -3766,6 +3857,7 @@
 
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsDragging(true);
@@ -3867,7 +3959,7 @@
             );
         }
 
-        function FunnelNode({ node, isSelected, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, onDragStart }) {
+        function FunnelNode({ node, isSelected, isViewMode, connecting, viewportZoom, onSelect, onMove, onStartConnection, onEndConnection, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
             const colorDef = NODE_COLORS[node.color || 0] || NODE_COLORS[0];
 
@@ -3886,6 +3978,7 @@
 
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsDragging(true);
@@ -3959,7 +4052,7 @@
         // ========================
         // Section Components
         // ========================
-        function SectionNode({ section, isSelected, viewportZoom, nodes, textLabels, onSelect, onMove, onResize, onDragStart, onMoveContainedObjects }) {
+        function SectionNode({ section, isSelected, isViewMode, viewportZoom, nodes, textLabels, onSelect, onMove, onResize, onDragStart, onMoveContainedObjects }) {
             const [isDragging, setIsDragging] = useState(false);
             const [isResizing, setIsResizing] = useState(null);
 
@@ -3971,6 +4064,7 @@
 
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsDragging(true);
@@ -4013,6 +4107,7 @@
 
             const handleResizeStart = useCallback((e, direction) => {
                 e.stopPropagation();
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsResizing(direction);
@@ -4080,7 +4175,7 @@
             );
         }
 
-        function SectionEditor({ section, nodes, textLabels, onUpdate, onDelete, onDuplicate }) {
+        function SectionEditor({ section, nodes, textLabels, isViewMode, onUpdate, onDelete, onDuplicate }) {
             // Find objects contained in this section
             const containedIds = getObjectsInSection(section, nodes, textLabels);
             const containedNodes = nodes.filter(n => containedIds.includes(n.id));
@@ -4096,31 +4191,35 @@
                                 value={section.label || ''}
                                 onChange={e => onUpdate({ label: e.target.value })}
                                 placeholder="Enter section name..."
+                                readOnly={isViewMode}
+                                style={isViewMode ? { background: 'var(--input-bg)', cursor: 'default' } : {}}
                             />
                         </div>
                     </div>
 
-                    <div className="panel-section">
-                        <div className="panel-section-title">Dimensions</div>
-                        <div className="panel-field">
-                            <label>Width</label>
-                            <input
-                                type="number"
-                                value={Math.round(section.size.width)}
-                                onChange={e => onUpdate({ size: { ...section.size, width: Number(e.target.value) || 120 } })}
-                                min="120"
-                            />
+                    {!isViewMode && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Dimensions</div>
+                            <div className="panel-field">
+                                <label>Width</label>
+                                <input
+                                    type="number"
+                                    value={Math.round(section.size.width)}
+                                    onChange={e => onUpdate({ size: { ...section.size, width: Number(e.target.value) || 120 } })}
+                                    min="120"
+                                />
+                            </div>
+                            <div className="panel-field">
+                                <label>Height</label>
+                                <input
+                                    type="number"
+                                    value={Math.round(section.size.height)}
+                                    onChange={e => onUpdate({ size: { ...section.size, height: Number(e.target.value) || 80 } })}
+                                    min="80"
+                                />
+                            </div>
                         </div>
-                        <div className="panel-field">
-                            <label>Height</label>
-                            <input
-                                type="number"
-                                value={Math.round(section.size.height)}
-                                onChange={e => onUpdate({ size: { ...section.size, height: Number(e.target.value) || 80 } })}
-                                min="80"
-                            />
-                        </div>
-                    </div>
+                    )}
 
                     <div className="panel-section">
                         <div className="panel-section-title">Contained Objects</div>
@@ -4144,10 +4243,12 @@
                         </div>
                     </div>
 
-                    <div className="panel-section delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="panel-section delete-section">
+                            <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                            <button className="delete-btn" onClick={onDelete}>Delete</button>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -4155,12 +4256,13 @@
         // ========================
         // TextLabel Components
         // ========================
-        function TextLabelNode({ label, isSelected, viewportZoom, onSelect, onMove, onDragStart }) {
+        function TextLabelNode({ label, isSelected, isViewMode, viewportZoom, onSelect, onMove, onDragStart }) {
             const [isDragging, setIsDragging] = useState(false);
 
             const handleMouseDown = useCallback((e) => {
                 e.stopPropagation();
                 if (onSelect) onSelect(e);
+                if (isViewMode) return;
                 if (onDragStart) onDragStart();
 
                 setIsDragging(true);
@@ -4208,7 +4310,7 @@
             );
         }
 
-        function TextLabelEditor({ label, onUpdate, onDelete, onDuplicate }) {
+        function TextLabelEditor({ label, isViewMode, onUpdate, onDelete, onDuplicate }) {
             return (
                 <div>
                     <div className="panel-section">
@@ -4218,44 +4320,50 @@
                                 value={label.content || ''}
                                 onChange={e => onUpdate({ content: e.target.value })}
                                 placeholder="Enter text..."
+                                readOnly={isViewMode}
+                                style={isViewMode ? { background: 'var(--input-bg)', cursor: 'default' } : {}}
                             />
                         </div>
                     </div>
 
-                    <div className="panel-section">
-                        <div className="panel-section-title">Styling</div>
-                        <div className="panel-field">
-                            <label>Font Size (px)</label>
-                            <input
-                                type="number"
-                                value={label.fontSize || 14}
-                                onChange={e => onUpdate({ fontSize: Number(e.target.value) || 14 })}
-                                min="8"
-                                max="72"
-                            />
+                    {!isViewMode && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Styling</div>
+                            <div className="panel-field">
+                                <label>Font Size (px)</label>
+                                <input
+                                    type="number"
+                                    value={label.fontSize || 14}
+                                    onChange={e => onUpdate({ fontSize: Number(e.target.value) || 14 })}
+                                    min="8"
+                                    max="72"
+                                />
+                            </div>
+                            <div className="panel-field" style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                                <button
+                                    className={`toolbar-btn ${label.fontWeight === 'bold' ? 'primary' : ''}`}
+                                    onClick={() => onUpdate({ fontWeight: label.fontWeight === 'bold' ? 'normal' : 'bold' })}
+                                    style={{ flex: 1, justifyContent: 'center' }}
+                                >
+                                    Bold
+                                </button>
+                                <button
+                                    className={`toolbar-btn ${label.fontStyle === 'italic' ? 'primary' : ''}`}
+                                    onClick={() => onUpdate({ fontStyle: label.fontStyle === 'italic' ? 'normal' : 'italic' })}
+                                    style={{ flex: 1, justifyContent: 'center' }}
+                                >
+                                    Italic
+                                </button>
+                            </div>
                         </div>
-                        <div className="panel-field" style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                            <button
-                                className={`toolbar-btn ${label.fontWeight === 'bold' ? 'primary' : ''}`}
-                                onClick={() => onUpdate({ fontWeight: label.fontWeight === 'bold' ? 'normal' : 'bold' })}
-                                style={{ flex: 1, justifyContent: 'center' }}
-                            >
-                                Bold
-                            </button>
-                            <button
-                                className={`toolbar-btn ${label.fontStyle === 'italic' ? 'primary' : ''}`}
-                                onClick={() => onUpdate({ fontStyle: label.fontStyle === 'italic' ? 'normal' : 'italic' })}
-                                style={{ flex: 1, justifyContent: 'center' }}
-                            >
-                                Italic
-                            </button>
-                        </div>
-                    </div>
+                    )}
 
-                    <div className="panel-section delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="panel-section delete-section">
+                            <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                            <button className="delete-btn" onClick={onDelete}>Delete</button>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -4263,7 +4371,7 @@
         // ========================
         // NodeEditor Component
         // ========================
-        function GlobalFilterEditor({ node, csvData, onUpdate, onDelete, onDuplicate }) {
+        function GlobalFilterEditor({ node, csvData, isViewMode, onUpdate, onDelete, onDuplicate }) {
             const globalFilters = node.globalFilters || [];
 
             // Helper to get distinct values for a column
@@ -4307,11 +4415,13 @@
                                 <div key={i} className="metric-card filter-card">
                                     <div className="metric-card-header">
                                         <span className="metric-card-title">Filter {i + 1}</span>
-                                        <button className="metric-delete-btn" onClick={() => {
-                                            const filters = [...globalFilters];
-                                            filters.splice(i, 1);
-                                            onUpdate({ globalFilters: filters });
-                                        }}>&times;</button>
+                                        {!isViewMode && (
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const filters = [...globalFilters];
+                                                filters.splice(i, 1);
+                                                onUpdate({ globalFilters: filters });
+                                            }}>&times;</button>
+                                        )}
                                     </div>
                                     <div className="panel-field">
                                         <label>Column</label>
@@ -4370,23 +4480,27 @@
                                     </div>
                                 </div>
                             ))}
-                            <button className="add-btn" onClick={() => {
-                                onUpdate({ globalFilters: [...globalFilters, { column: '', operator: 'equals', value: '' }] });
-                            }}>
-                                + Add Filter
-                            </button>
+                            {!isViewMode && (
+                                <button className="add-btn" onClick={() => {
+                                    onUpdate({ globalFilters: [...globalFilters, { column: '', operator: 'equals', value: '' }] });
+                                }}>
+                                    + Add Filter
+                                </button>
+                            )}
                         </div>
                     )}
 
-                    <div className="delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="delete-section">
+                            <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                            <button className="delete-btn" onClick={onDelete}>Delete</button>
+                        </div>
+                    )}
                 </div>
             );
         }
 
-        function StreamFilterEditor({ node, csvData, allNodes, onUpdate, onDelete, onDuplicate }) {
+        function StreamFilterEditor({ node, csvData, allNodes, isViewMode, onUpdate, onDelete, onDuplicate }) {
             const streamFilters = node.streamFilters || [];
 
             // Helper to get distinct values for a column
@@ -4444,11 +4558,13 @@
                                 <div key={i} className="metric-card filter-card">
                                     <div className="metric-card-header">
                                         <span className="metric-card-title">Filter {i + 1}</span>
-                                        <button className="metric-delete-btn" onClick={() => {
-                                            const filters = [...streamFilters];
-                                            filters.splice(i, 1);
-                                            onUpdate({ streamFilters: filters });
-                                        }}>&times;</button>
+                                        {!isViewMode && (
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const filters = [...streamFilters];
+                                                filters.splice(i, 1);
+                                                onUpdate({ streamFilters: filters });
+                                            }}>&times;</button>
+                                        )}
                                     </div>
                                     <div className="panel-field">
                                         <label>Column</label>
@@ -4507,23 +4623,27 @@
                                     </div>
                                 </div>
                             ))}
-                            <button className="add-btn" onClick={() => {
-                                onUpdate({ streamFilters: [...streamFilters, { column: '', operator: 'equals', value: '' }] });
-                            }}>
-                                + Add Filter
-                            </button>
+                            {!isViewMode && (
+                                <button className="add-btn" onClick={() => {
+                                    onUpdate({ streamFilters: [...streamFilters, { column: '', operator: 'equals', value: '' }] });
+                                }}>
+                                    + Add Filter
+                                </button>
+                            )}
                         </div>
                     )}
 
-                    <div className="delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="delete-section">
+                            <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                            <button className="delete-btn" onClick={onDelete}>Delete</button>
+                        </div>
+                    )}
                 </div>
             );
         }
 
-        function NodeEditor({ node, csvData, edges, allNodes, onUpdate, onDelete, onDuplicate }) {
+        function NodeEditor({ node, csvData, edges, allNodes, isViewMode, onUpdate, onDelete, onDuplicate }) {
             const csvConfig = node.csvConfig || { filters: [], metrics: [] };
             const derivedMetrics = node.derivedMetrics || [];
 
@@ -4548,6 +4668,11 @@
 
             return (
                 <div>
+                    {isViewMode && (
+                        <div style={{ padding: '8px 16px 4px', fontSize: '11px', color: 'var(--primary)', background: 'var(--primary-light)', borderBottom: '1px solid #c7d0fc', fontWeight: 500 }}>
+                            View Mode — properties are read-only
+                        </div>
+                    )}
                     <div className="panel-section">
                         <div className="panel-section-title">Label</div>
                         <div className="panel-field">
@@ -4555,24 +4680,28 @@
                                 value={node.label}
                                 onChange={e => onUpdate({ label: e.target.value })}
                                 placeholder="Node label..."
+                                readOnly={isViewMode}
+                                style={isViewMode ? { background: 'var(--input-bg)', cursor: 'default' } : {}}
                             />
                         </div>
                     </div>
 
-                    <div className="panel-section">
-                        <div className="panel-section-title">Color</div>
-                        <div className="color-picker">
-                            {NODE_COLORS.map((c, i) => (
-                                <div
-                                    key={i}
-                                    className={`color-swatch${(node.color || 0) === i ? ' active' : ''}`}
-                                    style={{ background: c.bg, borderColor: c.border }}
-                                    onClick={() => onUpdate({ color: i })}
-                                    title={c.name}
-                                />
-                            ))}
+                    {!isViewMode && (
+                        <div className="panel-section">
+                            <div className="panel-section-title">Color</div>
+                            <div className="color-picker">
+                                {NODE_COLORS.map((c, i) => (
+                                    <div
+                                        key={i}
+                                        className={`color-swatch${(node.color || 0) === i ? ' active' : ''}`}
+                                        style={{ background: c.bg, borderColor: c.border }}
+                                        onClick={() => onUpdate({ color: i })}
+                                        title={c.name}
+                                    />
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Data Filters Section */}
                     {csvData && (
@@ -4585,11 +4714,13 @@
                                 <div key={i} className="metric-card filter-card">
                                     <div className="metric-card-header">
                                         <span className="metric-card-title">Filter {i + 1}</span>
-                                        <button className="metric-delete-btn" onClick={() => {
-                                            const filters = [...(csvConfig.filters || [])];
-                                            filters.splice(i, 1);
-                                            onUpdate({ csvConfig: { ...csvConfig, filters } });
-                                        }}>&times;</button>
+                                        {!isViewMode && (
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const filters = [...(csvConfig.filters || [])];
+                                                filters.splice(i, 1);
+                                                onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                            }}>&times;</button>
+                                        )}
                                     </div>
                                     <div className="panel-field">
                                         <label>Column</label>
@@ -4646,10 +4777,12 @@
                                     </div>
                                 </div>
                             ))}
-                            <button className="add-btn" onClick={() => {
-                                const filters = [...(csvConfig.filters || []), { column: '', operator: 'equals', value: '' }];
-                                onUpdate({ csvConfig: { ...csvConfig, filters } });
-                            }}>+ Add Filter</button>
+                            {!isViewMode && (
+                                <button className="add-btn" onClick={() => {
+                                    const filters = [...(csvConfig.filters || []), { column: '', operator: 'equals', value: '' }];
+                                    onUpdate({ csvConfig: { ...csvConfig, filters } });
+                                }}>+ Add Filter</button>
+                            )}
                         </div>
                     )}
 
@@ -4664,11 +4797,13 @@
                                     <div key={i} className="metric-card csv-metric-card">
                                         <div className="metric-card-header">
                                             <span className="metric-card-title">CSV Metric {i + 1}</span>
-                                            <button className="metric-delete-btn" onClick={() => {
-                                                const metrics = [...(csvConfig.metrics || [])];
-                                                metrics.splice(i, 1);
-                                                onUpdate({ csvConfig: { ...csvConfig, metrics } });
-                                            }}>&times;</button>
+                                            {!isViewMode && (
+                                                <button className="metric-delete-btn" onClick={() => {
+                                                    const metrics = [...(csvConfig.metrics || [])];
+                                                    metrics.splice(i, 1);
+                                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                                }}>&times;</button>
+                                            )}
                                         </div>
                                         <div className="panel-field">
                                             <label>Column</label>
@@ -4756,10 +4891,12 @@
                                     </div>
                                 );
                             })}
-                            <button className="add-btn" onClick={() => {
-                                const metrics = [...(csvConfig.metrics || []), { column: '', aggregation: 'SUM', key: '', label: '' }];
-                                onUpdate({ csvConfig: { ...csvConfig, metrics } });
-                            }}>+ Add CSV Metric</button>
+                            {!isViewMode && (
+                                <button className="add-btn" onClick={() => {
+                                    const metrics = [...(csvConfig.metrics || []), { column: '', aggregation: 'SUM', key: '', label: '' }];
+                                    onUpdate({ csvConfig: { ...csvConfig, metrics } });
+                                }}>+ Add CSV Metric</button>
+                            )}
                         </div>
                     )}
 
@@ -4832,11 +4969,13 @@
                                     <div key={i} className={`metric-card derived-metric-card${isDisconnected ? ' disconnected' : ''}`}>
                                         <div className="metric-card-header">
                                             <span className="metric-card-title">Derived Metric {i + 1}</span>
-                                            <button className="metric-delete-btn" onClick={() => {
-                                                const newDerived = [...derivedMetrics];
-                                                newDerived.splice(i, 1);
-                                                onUpdate({ derivedMetrics: newDerived });
-                                            }}>&times;</button>
+                                            {!isViewMode && (
+                                                <button className="metric-delete-btn" onClick={() => {
+                                                    const newDerived = [...derivedMetrics];
+                                                    newDerived.splice(i, 1);
+                                                    onUpdate({ derivedMetrics: newDerived });
+                                                }}>&times;</button>
+                                            )}
                                         </div>
                                         {isDisconnected && (
                                             <div style={{ fontSize: '11px', color: '#e63946', marginBottom: '8px', padding: '4px 8px', background: '#fff0f0', borderRadius: '6px' }}>
@@ -4958,10 +5097,12 @@
                                     </div>
                                 );
                             })}
-                            <button className="add-btn" onClick={() => {
-                                const newDerived = [...derivedMetrics, { key: '', label: '', expression: '' }];
-                                onUpdate({ derivedMetrics: newDerived });
-                            }}>+ Add Derived Metric</button>
+                            {!isViewMode && (
+                                <button className="add-btn" onClick={() => {
+                                    const newDerived = [...derivedMetrics, { key: '', label: '', expression: '' }];
+                                    onUpdate({ derivedMetrics: newDerived });
+                                }}>+ Add Derived Metric</button>
+                            )}
                         </div>
                     )}
 
@@ -4972,11 +5113,13 @@
                             <div key={i} className="metric-card">
                                 <div className="metric-card-header">
                                     <span className="metric-card-title">Metric {i + 1}</span>
-                                    <button className="metric-delete-btn" onClick={() => {
-                                        const metrics = [...node.metrics];
-                                        metrics.splice(i, 1);
-                                        onUpdate({ metrics });
-                                    }}>&times;</button>
+                                    {!isViewMode && (
+                                        <button className="metric-delete-btn" onClick={() => {
+                                            const metrics = [...node.metrics];
+                                            metrics.splice(i, 1);
+                                            onUpdate({ metrics });
+                                        }}>&times;</button>
+                                    )}
                                 </div>
                                 <div className="panel-field">
                                     <label>Key (for expressions)</label>
@@ -5017,15 +5160,19 @@
                                 </div>
                             </div>
                         ))}
-                        <button className="add-btn" onClick={() => {
-                            onUpdate({ metrics: [...node.metrics, { key: '', label: '', value: 0 }] });
-                        }}>+ Add Metric</button>
+                        {!isViewMode && (
+                            <button className="add-btn" onClick={() => {
+                                onUpdate({ metrics: [...node.metrics, { key: '', label: '', value: 0 }] });
+                            }}>+ Add Metric</button>
+                        )}
                     </div>
 
-                    <div className="delete-section">
-                        <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
-                        <button className="delete-btn" onClick={onDelete}>Delete</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="delete-section">
+                            <button className="duplicate-btn" onClick={onDuplicate}>Duplicate</button>
+                            <button className="delete-btn" onClick={onDelete}>Delete</button>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -5033,7 +5180,7 @@
         // ========================
         // EdgeEditor Component
         // ========================
-        function EdgeEditor({ edge, sourceNode, targetNode, onUpdate, onDelete }) {
+        function EdgeEditor({ edge, sourceNode, targetNode, isViewMode, onUpdate, onDelete }) {
             if (!sourceNode || !targetNode) return null;
 
             return (
@@ -5054,11 +5201,13 @@
                                 <div key={i} className="metric-card">
                                     <div className="metric-card-header">
                                         <span className="metric-card-title">Calculation {i + 1}</span>
-                                        <button className="metric-delete-btn" onClick={() => {
-                                            const calculations = [...edge.calculations];
-                                            calculations.splice(i, 1);
-                                            onUpdate({ calculations });
-                                        }}>&times;</button>
+                                        {!isViewMode && (
+                                            <button className="metric-delete-btn" onClick={() => {
+                                                const calculations = [...edge.calculations];
+                                                calculations.splice(i, 1);
+                                                onUpdate({ calculations });
+                                            }}>&times;</button>
+                                        )}
                                     </div>
                                     <div className="panel-field">
                                         <label>Label</label>
@@ -5102,9 +5251,11 @@
                                 </div>
                             );
                         })}
-                        <button className="add-btn" onClick={() => {
-                            onUpdate({ calculations: [...edge.calculations, { label: '', expression: '', unit: '' }] });
-                        }}>+ Add Calculation</button>
+                        {!isViewMode && (
+                            <button className="add-btn" onClick={() => {
+                                onUpdate({ calculations: [...edge.calculations, { label: '', expression: '', unit: '' }] });
+                            }}>+ Add Calculation</button>
+                        )}
                     </div>
 
                     <div className="panel-section">
@@ -5127,9 +5278,11 @@
                         </div>
                     </div>
 
-                    <div className="delete-section">
-                        <button className="delete-btn" onClick={onDelete}>Delete Connection</button>
-                    </div>
+                    {!isViewMode && (
+                        <div className="delete-section">
+                            <button className="delete-btn" onClick={onDelete}>Delete Connection</button>
+                        </div>
+                    )}
                 </div>
             );
         }

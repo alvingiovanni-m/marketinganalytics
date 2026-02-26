@@ -20,6 +20,7 @@ A visual, drag-and-drop funnel builder for creating customizable data flow diagr
 - **Node Colors** — Pick from 6 color presets to categorize your nodes.
 - **Text Box Labels** — Add free-form text on the canvas to annotate your funnels. Customize text size, bold, and italic styling.
 - **Sections & Side Navigation** — Organize your funnel into visual sections (like Figma frames). Sections group objects spatially — when you move a section, all contained objects move with it. Use the side navigation panel to quickly zoom to any section.
+- **Edit / View Mode** — Toggle between Edit Mode (full access) and View Mode (read-only canvas). In View Mode, users can still change Global Filter and Stream Filter conditions to explore different scenarios live, while all structural edits are blocked.
 
 ## Sections & Side Navigation
 
@@ -191,6 +192,69 @@ The undo stack is limited to **50 entries** to prevent excessive memory usage. T
 - **Redo stack clears on new action**: After undoing, if you make any new change, the redo stack is cleared (standard undo tree behavior).
 - **Node dragging**: Dragging a node creates only **one** undo entry (captured at the start of the drag), not one per frame.
 - **Multi-object drag**: Moving multiple selected objects together creates only **one** undo entry.
+
+## Edit Mode vs View Mode
+
+The Funnel Builder has two modes controlled by the **mode toggle** in the toolbar (pencil icon = Edit, eye icon = View). The tool always starts in **Edit Mode**.
+
+### Switching Modes
+
+Click the **pencil icon** (✏) for Edit Mode or the **eye icon** (👁) for View Mode. The toggle is located in the toolbar, to the right of the Hand/Select cursor toggle.
+
+A **"View Mode — editing disabled"** badge appears in the bottom-right corner of the screen when View Mode is active.
+
+### Edit Mode (default)
+
+Full access to all canvas operations:
+- Add, delete, move, and edit all objects (nodes, edges, text boxes, sections, global filter nodes, stream filter nodes)
+- Drag and drop nodes, sections, and text boxes
+- Connect and disconnect edges
+- Edit node labels, metrics, derived metrics, and colours
+- Edit section labels, colours, and resize handles
+- Edit text box content and styling
+- Undo / Redo (keyboard shortcuts and toolbar buttons)
+- Import JSON / Clear Canvas / Clear CSV
+- Duplicate and copy/paste objects
+- Double-click canvas to add a node
+
+### View Mode
+
+Read-only canvas for exploring and presenting a funnel without accidentally changing it.
+
+**What you can still do in View Mode:**
+- Pan and zoom the canvas
+- Switch cursor mode (Hand / Select)
+- Click objects to select them and view their properties in read-only form
+- **Change filter conditions on Global Filter nodes** — column, operator, and value are fully editable so you can explore different scenarios
+- **Change filter conditions on Stream Filter nodes** — same as global filters; downstream metric values update in real time
+- Navigate sections via the side navigation panel
+- Export the funnel as JSON
+
+**What is blocked in View Mode:**
+- Adding or deleting any object (nodes, edges, text boxes, sections, global filter nodes, stream filter nodes)
+- Dragging or moving any object
+- Creating or deleting edge connections (ports are hidden)
+- Editing node labels, metrics, derived metrics, or colours
+- Editing section labels, colours, or resizing sections
+- Editing text box content or styling
+- Undo / Redo (buttons hidden; `Cmd+Z` / `Cmd+Shift+Z` do nothing)
+- Import JSON, Clear Canvas, Clear CSV
+- Copy, paste, or duplicate any object (`Cmd+C`, `Cmd+V`, `Cmd+D` do nothing)
+- Double-clicking the canvas to add a node
+
+### Use Cases
+
+- **Presenting a funnel**: Switch to View Mode to walk stakeholders through a funnel without accidentally modifying it
+- **Interactive scenario analysis**: Stay in View Mode and adjust Global/Stream Filter conditions to show different data cuts (e.g., "let's filter to Q1 only") — all metric values update live
+- **Sharing a read-only snapshot**: Export the JSON in View Mode to share the current state without any risk of edits
+
+### Important Notes
+
+- Mode is **not persisted** — the tool always starts in Edit Mode on page load
+- Switching modes preserves all canvas state (no nodes, edges, or filters are changed)
+- The Upload CSV button remains visible in View Mode so users can load data to see filter results
+
+---
 
 ## Usage
 
